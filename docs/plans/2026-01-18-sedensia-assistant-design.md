@@ -416,31 +416,81 @@ Pricing notes:
 - [ ] Telegram inline buttons for approval
 - [ ] Estimate creation → approval → send flow
 
-## Phase 3: Status & Communication
+## Phase 3: Dashboard & Admin Interface ✓
 
 ### Goal
-Handle status inquiries, reorder requests, and job tracking.
+Provide a web-based dashboard for managing jobs, estimates, contacts, and pricing analytics.
+
+### Status: COMPLETE
+
+### Features Implemented
+- **Authentication** - Supabase Auth with login page
+- **Dashboard Home** - Stats overview (active jobs, pending estimates, revenue)
+- **Jobs Page** - List with inline stage editing, ETA management
+- **Estimates Page** - List of estimates with status tracking
+- **Contacts Page** - Add/toggle monitored contacts
+- **Pricing Analytics** - Historical pricing data and win rates
+
+### Technology
+- Next.js 15 (App Router)
+- Supabase client for data
+- Tailwind CSS for styling
+- Deployed on Netlify
+
+## Phase 4: Status Inquiries & Reorder Requests
+
+### Goal
+Handle status inquiries, reorder requests, and automated response drafting with multi-language support.
+
+### Language Handling
+
+The system supports Korean and English:
+- **Email responses** - Match the language of the original email (Korean email → Korean response)
+- **Telegram messages** - Use each user's language preference (default: Korean)
+
+### New Database Table: `telegram_users`
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key |
+| telegram_id | text | Telegram user ID (unique) |
+| name | text | Display name |
+| language | text | `ko` or `en`, default `ko` |
+| created_at | timestamptz | Record creation |
 
 ### Intent Detection
+
+Expand AI parser to classify incoming emails:
 
 | Intent | Example | Action |
 |--------|---------|--------|
 | `new_request` | "Can you quote 10 monument signs?" | → Phase 1 flow |
-| `status_inquiry` | "What's the status on the channel letters?" | → Lookup & reply |
-| `reorder` | "Can we get the same wayfinding signs from last month?" | → Pull previous job, confirm pricing |
+| `status_inquiry` | "What's the status on the channel letters?" | → Match job → draft response |
+| `reorder` | "Can we get the same wayfinding signs from last month?" | → Find previous order → show pricing |
 | `approval` | "Approved, please proceed" | → Update job to `approved` |
-| `general` | "Thanks!" / scheduling chat | → Notify you, no auto-action |
+| `general` | "Thanks!" / scheduling chat | → Notify only, no auto-action |
+
+### Job Matching Strategy
+
+When a `status_inquiry` or `reorder` email arrives:
+
+1. **Filter by contact** - Only search jobs from the same sender's company
+2. **Keyword extraction** - AI extracts key terms (e.g., "channel letters", "Taylor facility")
+3. **Fuzzy match** - Search job descriptions and estimate items for keywords
+4. **Recency bias** - Prefer recent jobs (last 90 days) over older ones
+5. **Confidence score** - If multiple matches or low confidence, show options in Telegram
 
 ### Status Inquiry Flow
 
 ```
-Email: "What's the status on the channel letters?"
+Email: "채널 레터 진행 상황이 어떻게 되나요?"
     │
     ▼
 ┌─────────────────────────────────┐
 │  AI Intent Detection            │
 │  Intent: status_inquiry         │
-│  Extracted: "channel letters"   │
+│  Language: ko                   │
+│  Keywords: "채널 레터"           │
 └─────────────────────────────────┘
     │
     ▼
@@ -448,40 +498,167 @@ Email: "What's the status on the channel letters?"
 │  Job Matcher                    │
 │  Query recent jobs by contact   │
 │  + fuzzy match on description   │
-│  Found: Job #1042               │
+│  Found: Job #abc123 (92% match) │
+└─────────────────────────────────┘
+    │
+    ▼
+┌─────────────────────────────────┐
+│  AI Response Drafter            │
+│  Draft status update in Korean  │
 └─────────────────────────────────┘
     │
     ▼
 ┌─────────────────────────────────┐
 │  Telegram Notification          │
+│  (in user's language pref)      │
 └─────────────────────────────────┘
 ```
 
-### Telegram Status Format
+### Telegram Status Inquiry Format (Korean)
 
 ```
-❓ Status Inquiry from Minseok
+❓ 상태 문의 - Samsung
 
-Re: Channel Letters (Job #1042)
+발신: 김민석
+제목: Channel Letters 진행 상황
 
-Current Status: Fabricating
-Started: Jan 15 → Est. Complete: Jan 24
+매칭된 작업: #abc123
+현재 단계: 제작 중 (in_production)
+예상 완료: 1월 24일
 
-[Reply with Update] [Mark Delivered]
+━━━━━━━━━━━━━━━━━━
+📝 답변 초안:
+"안녕하세요 민석님, 채널 레터 제작 현황
+안내드립니다. 현재 제작 중이며 1월 24일
+완료 예정입니다..."
+
+[보내기] [수정] [무시]
 ```
 
-### Telegram Commands
-- `/status <job_id> <status>` - Update job status
-- `/jobs` - List active jobs with statuses
+### Telegram Status Inquiry Format (English)
+
+```
+❓ Status Inquiry - Samsung
+
+From: Minseok Kim
+Subject: Channel Letters Progress
+
+Matched Job: #abc123
+Current Stage: In Production
+ETA: Jan 24
+
+━━━━━━━━━━━━━━━━━━
+📝 Draft Response:
+"Hi Minseok, here's an update on the channel
+letters. Currently in production, estimated
+completion Jan 24..."
+
+[Send] [Edit] [Ignore]
+```
+
+### Reorder Flow
+
+```
+Email: "지난달 안내 표지판 동일하게 추가 주문 가능할까요?"
+    │
+    ▼
+┌─────────────────────────────────┐
+│  AI Intent Detection            │
+│  Intent: reorder                │
+│  Keywords: "안내 표지판", "지난달" │
+└─────────────────────────────────┘
+    │
+    ▼
+┌─────────────────────────────────┐
+│  Find Previous Order            │
+│  Search estimates by contact    │
+│  + keywords + date range        │
+└─────────────────────────────────┘
+    │
+    ▼
+┌─────────────────────────────────┐
+│  Telegram Notification          │
+│  Show previous items + pricing  │
+└─────────────────────────────────┘
+```
+
+### Telegram Reorder Format (Korean)
+
+```
+🔄 재주문 요청 - Samsung
+
+발신: 김민석
+"지난달 안내 표지판 동일하게 추가 주문 가능할까요?"
+
+━━━━━━━━━━━━━━━━━━
+📋 이전 주문 (2025-12-15):
+• Wayfinding Signs (12"×8") × 8 ... $960
+  단가: $120
+
+총액: $960
+
+[동일 가격으로 견적 생성] [가격 수정] [무시]
+```
+
+### Edge Cases
+
+**No match found:**
+```
+❓ 상태 문의 - Samsung
+
+이전 주문을 찾을 수 없습니다.
+"wayfinding signs" 검색 결과 없음
+
+[새 견적으로 처리] [수동 검색]
+```
+
+**Multiple matches:**
+```
+❓ 상태 문의 - Samsung
+
+여러 작업이 검색되었습니다:
+
+1. #abc123 - Channel Letters (24") - 1월 10일
+2. #def456 - Channel Letters (18") - 12월 20일
+3. #ghi789 - Channel Signs - 12월 5일
+
+[1 선택] [2 선택] [3 선택]
+```
+
+### New Telegram Commands
+
+- `/lang <ko|en>` - Set language preference
+- `/status <job_id>` - Quick status lookup (shorter than `/job`)
 
 ### Implementation Tasks
-- [ ] Intent detection for incoming emails
-- [ ] Job matching by description
-- [ ] Status inquiry auto-response (with approval)
-- [ ] Reorder detection and pricing lookup
-- [ ] Telegram commands (`/status`, `/jobs`)
 
-## Phase 4: Invoicing & Job Completion
+**Database:**
+- [ ] Create `telegram_users` table with language preference
+
+**AI Module:**
+- [ ] Expand parser for all intents (`status_inquiry`, `reorder`, `approval`, `general`)
+- [ ] Add language detection to parser output
+- [ ] Add response drafting function with language parameter
+
+**Job Matching:**
+- [ ] Keyword extraction from emails
+- [ ] Fuzzy search across jobs/estimates by contact + keywords
+- [ ] Confidence scoring for matches
+
+**Telegram:**
+- [ ] Add `/lang` command for language preference
+- [ ] Localized message templates (Korean/English)
+- [ ] Status inquiry notification + callbacks (Send/Edit/Ignore)
+- [ ] Reorder notification + callbacks (Create/Edit/Ignore)
+- [ ] Edit flow for response text
+
+**Gmail:**
+- [ ] Reply-to-thread function (respond in same email thread)
+
+**Email Processor:**
+- [ ] Route emails by intent to appropriate flow
+
+## Phase 5: Invoicing & Job Completion
 
 ### Goal
 Convert estimates to invoices, send completion emails, track payment.
@@ -642,30 +819,37 @@ ANTHROPIC_API_KEY=xxx
 
 ## Success Criteria
 
-### Phase 1 Complete When:
+### Phase 1 Complete When: ✓
 - Email from Minseok triggers Telegram notification within 30 seconds
 - AI correctly extracts sign types, quantities, sizes, special requests
 - Notification includes all relevant details in readable format
 
-### Phase 2 Complete When:
+### Phase 2 Complete When: ✓
 - [Create Estimate] generates draft with AI-recommended pricing
 - Turnaround estimate reflects current workload
 - [Approve & Send] sends estimate via QuickBooks and emails customer
 
-### Phase 3 Complete When:
-- Status inquiries get matched to correct job
-- Reorder requests pull previous pricing
-- `/status` and `/jobs` commands work
+### Phase 3 Complete When: ✓
+- Dashboard accessible with Supabase Auth login
+- Jobs, estimates, contacts, and pricing pages functional
+- Deployed on Netlify
 
 ### Phase 4 Complete When:
+- Status inquiries get matched to correct job
+- Reorder requests pull previous pricing
+- Draft responses sent for Telegram approval before emailing
+- Language detection works (Korean email → Korean response)
+- Telegram messages respect user language preference (`/lang` command)
+
+### Phase 5 Complete When:
 - [Mark Delivered] converts estimate to invoice
 - Completion email replies to original thread with PDF attached
 - [Mark Paid] updates job status
 
 ## Future Considerations (Out of Scope)
 
-- Multiple team members / role-based access
+- Role-based access control (admin vs viewer)
 - Customer portal for self-service status checks
 - Automated follow-up reminders for unpaid invoices
 - Integration with shop floor scheduling software
-- Analytics dashboard for pricing optimization
+- Mobile app for field updates
