@@ -1,4 +1,5 @@
 import { getMessage, extractEmailContent } from './client.js';
+import { getWatchState, getNewMessagesSinceHistoryId } from './watch.js';
 import { findContactByEmail } from '../../db/index.js';
 import { parseEstimateRequest } from '../ai/index.js';
 import { sendNotification, sendSimpleMessage } from '../telegram/index.js';
@@ -19,19 +20,34 @@ interface GmailNotification {
 }
 
 export async function handleGmailWebhook(pubsubMessage: PubSubMessage): Promise<void> {
-  // Decode the Pub/Sub message
   try {
     const data = Buffer.from(pubsubMessage.message.data, 'base64').toString('utf-8');
     const notification: GmailNotification = JSON.parse(data);
+
     console.log('Gmail notification received:', notification);
+
+    // Get stored state and fetch new messages since last historyId
+    const state = await getWatchState();
+    if (!state) {
+      console.log('No watch state found, skipping');
+      return;
+    }
+
+    const messageIds = await getNewMessagesSinceHistoryId(state.historyId);
+    console.log(`Found ${messageIds.length} new messages`);
+
+    // Process each new message
+    for (const messageId of messageIds) {
+      try {
+        await processEmailMessage(messageId);
+      } catch (error) {
+        console.error(`Error processing message ${messageId}:`, error);
+      }
+    }
   } catch (error) {
     console.error('Failed to parse Pub/Sub message:', error);
     return;
   }
-
-  // For now, we'll need to fetch recent messages
-  // In production, you'd use historyId to get only new messages
-  // This is a simplified implementation for Phase 1
 }
 
 export async function processEmailMessage(messageId: string): Promise<boolean> {

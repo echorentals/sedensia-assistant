@@ -3,6 +3,7 @@ import cors from '@fastify/cors';
 import { env } from './config/index.js';
 import { webhookRoutes } from './routes/webhooks.js';
 import { authRoutes } from './routes/auth.js';
+import { setupRoutes } from './routes/setup.js';
 import { bot } from './modules/telegram/index.js';
 
 async function main() {
@@ -18,6 +19,7 @@ async function main() {
   // Register routes
   await fastify.register(webhookRoutes);
   await fastify.register(authRoutes);
+  await fastify.register(setupRoutes);
 
   // Setup Telegram bot commands
   bot.command('start', (ctx) => {

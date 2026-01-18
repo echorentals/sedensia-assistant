@@ -18,6 +18,8 @@ const envSchema = z.object({
   ANTHROPIC_API_KEY: z.string().min(1),
 
   ENCRYPTION_KEY: z.string().length(64, 'Must be 64 hex characters (32 bytes)'),
+
+  GMAIL_PUBSUB_TOPIC: z.string().optional(),
 });
 
 const result = envSchema.safeParse(process.env);
