@@ -188,3 +188,93 @@ export function extractEmailContent(message: gmail_v1.Schema$Message): {
 
   return { from, subject, body };
 }
+
+export interface ReplyOptions {
+  threadId: string;
+  messageId: string;
+  to: string;
+  subject: string;
+  body: string;
+  attachments?: Array<{
+    filename: string;
+    mimeType: string;
+    data: Buffer;
+  }>;
+}
+
+function createMimeMessage(options: ReplyOptions): string {
+  const boundary = `boundary_${Date.now()}`;
+  const hasAttachments = options.attachments && options.attachments.length > 0;
+
+  let message = '';
+  message += `MIME-Version: 1.0\r\n`;
+  message += `From: me\r\n`;
+  message += `To: ${options.to}\r\n`;
+  message += `Subject: ${options.subject}\r\n`;
+  message += `In-Reply-To: ${options.messageId}\r\n`;
+  message += `References: ${options.messageId}\r\n`;
+
+  if (hasAttachments) {
+    message += `Content-Type: multipart/mixed; boundary="${boundary}"\r\n`;
+    message += `\r\n`;
+    message += `--${boundary}\r\n`;
+    message += `Content-Type: text/plain; charset="UTF-8"\r\n`;
+    message += `\r\n`;
+    message += `${options.body}\r\n`;
+
+    for (const attachment of options.attachments!) {
+      message += `--${boundary}\r\n`;
+      message += `Content-Type: ${attachment.mimeType}; name="${attachment.filename}"\r\n`;
+      message += `Content-Disposition: attachment; filename="${attachment.filename}"\r\n`;
+      message += `Content-Transfer-Encoding: base64\r\n`;
+      message += `\r\n`;
+      message += `${attachment.data.toString('base64')}\r\n`;
+    }
+
+    message += `--${boundary}--\r\n`;
+  } else {
+    message += `Content-Type: text/plain; charset="UTF-8"\r\n`;
+    message += `\r\n`;
+    message += `${options.body}\r\n`;
+  }
+
+  return message;
+}
+
+export async function replyToThread(options: ReplyOptions): Promise<string | null> {
+  // Validate required fields
+  if (!options.threadId || !options.messageId || !options.to || !options.subject || !options.body) {
+    console.error('replyToThread: missing required fields');
+    return null;
+  }
+
+  const gmail = await getGmailClient();
+  if (!gmail) return null;
+
+  try {
+    const rawMessage = createMimeMessage(options);
+    const encodedMessage = Buffer.from(rawMessage)
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+
+    const response = await gmail.users.messages.send({
+      userId: 'me',
+      requestBody: {
+        raw: encodedMessage,
+        threadId: options.threadId,
+      },
+    });
+
+    return response.data.id || null;
+  } catch (error) {
+    console.error(`Failed to send reply to thread ${options.threadId}:`, error);
+    return null;
+  }
+}
+
+export async function getMessageThreadId(messageId: string): Promise<string | null> {
+  const message = await getMessage(messageId);
+  return message?.threadId || null;
+}
