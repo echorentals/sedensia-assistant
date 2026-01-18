@@ -66,10 +66,26 @@ Jobs are auto-created when an estimate is marked as won via the `/won` Telegram 
 - Links back to original estimate
 - Starts in `pending` stage with no ETA
 
-## App Structure
+## Project Structure
 
 ```
-sedensia-dashboard/
+sedensia-assistant/          # Existing repo (monorepo)
+├── src/                     # Fastify backend (unchanged)
+├── dashboard/               # New Next.js app
+│   ├── app/
+│   ├── components/
+│   ├── lib/
+│   └── package.json
+├── supabase/
+├── docs/
+├── netlify.toml             # Dashboard deploy config
+└── package.json             # Root (backend)
+```
+
+## Dashboard Structure
+
+```
+dashboard/
 ├── app/
 │   ├── layout.tsx           # Root layout with nav
 │   ├── page.tsx             # Dashboard home
@@ -193,12 +209,30 @@ sedensia-dashboard/
 
 ## Deployment
 
-- **Platform:** Netlify
-- **Domain:** app.sedensia.com (or similar subdomain)
-- **Environment:**
-  - `NEXT_PUBLIC_SUPABASE_URL`
-  - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-  - `SUPABASE_SERVICE_ROLE_KEY` (for server actions)
+### Dashboard (Netlify)
+
+**netlify.toml** (root of repo):
+```toml
+[build]
+  base = "dashboard"
+  command = "npm run build"
+  publish = ".next"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+```
+
+**Environment Variables (Netlify):**
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY` (for server actions)
+
+**Domain:** app.sedensia.com
+
+### Backend (Separate)
+
+Backend stays deployed wherever it runs now (Railway, Render, VPS, etc.).
+Uses ngrok for local development with webhooks.
 
 ## Backend Changes
 
