@@ -18,11 +18,11 @@ export const ParsedEstimateRequestSchema = z.object({
     signType: z.string(),
     quantity: z.number(),
     size: z.string(),
-    description: z.string().optional(),
+    description: z.string().nullish(),
   })),
   specialRequests: z.array(z.string()),
-  urgency: z.enum(['normal', 'urgent', 'rush']).optional(),
-  referencedJobDescription: z.string().optional(),
+  urgency: z.enum(['normal', 'urgent', 'rush']).nullish(),
+  referencedJobDescription: z.string().nullish(),
 });
 
 export type ParsedEstimateRequest = z.infer<typeof ParsedEstimateRequestSchema>;

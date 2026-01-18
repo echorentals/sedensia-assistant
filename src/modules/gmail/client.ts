@@ -135,6 +135,30 @@ export async function getMessage(messageId: string): Promise<gmail_v1.Schema$Mes
   }
 }
 
+export async function listRecentMessages(maxResults: number = 10): Promise<gmail_v1.Schema$Message[]> {
+  const gmail = await getGmailClient();
+  if (!gmail) return [];
+
+  try {
+    const response = await gmail.users.messages.list({
+      userId: 'me',
+      maxResults,
+    });
+
+    const messages: gmail_v1.Schema$Message[] = [];
+    for (const msg of response.data.messages || []) {
+      if (msg.id) {
+        const full = await getMessage(msg.id);
+        if (full) messages.push(full);
+      }
+    }
+    return messages;
+  } catch (error) {
+    console.error('Failed to list Gmail messages:', error);
+    return [];
+  }
+}
+
 export function extractEmailContent(message: gmail_v1.Schema$Message): {
   from: string;
   subject: string;
