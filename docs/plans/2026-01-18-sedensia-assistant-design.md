@@ -155,6 +155,121 @@ Historical pricing for AI recommendations.
 | bid_won | boolean | Whether this price won |
 | created_at | timestamptz | Record creation time |
 
+### `oauth_tokens`
+Persistent storage for OAuth tokens (Gmail, QuickBooks).
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key |
+| provider | text | `gmail` or `quickbooks` |
+| access_token | text | Current access token (encrypted) |
+| refresh_token | text | Refresh token (encrypted) |
+| token_type | text | Usually `Bearer` |
+| expires_at | timestamptz | Access token expiration |
+| scope | text | Granted OAuth scopes |
+| realm_id | text | QuickBooks company ID (null for Gmail) |
+| updated_at | timestamptz | Last token refresh |
+| created_at | timestamptz | Initial authorization |
+
+## OAuth Token Management
+
+Both Gmail and QuickBooks use OAuth 2.0 with short-lived access tokens. Proper token handling is critical for uninterrupted operation.
+
+### Token Characteristics
+
+| Provider | Access Token TTL | Refresh Token TTL | Notes |
+|----------|------------------|-------------------|-------|
+| Gmail | 1 hour | 6 months (or until revoked) | Refresh token may expire if unused |
+| QuickBooks | 1 hour | 100 days | Must refresh before expiry |
+
+### Token Refresh Strategy
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    API Request Flow                         │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  API Call Initiated                                         │
+│       │                                                     │
+│       ▼                                                     │
+│  ┌─────────────────────────────────┐                       │
+│  │ Check token expiry              │                       │
+│  │ (expires_at - 5 min buffer)     │                       │
+│  └─────────────────────────────────┘                       │
+│       │                                                     │
+│       ├── Token valid ──────────────────► Make API call    │
+│       │                                                     │
+│       ▼ Token expired/expiring                             │
+│  ┌─────────────────────────────────┐                       │
+│  │ Call refresh token endpoint     │                       │
+│  └─────────────────────────────────┘                       │
+│       │                                                     │
+│       ├── Success ──► Update DB ──► Make API call          │
+│       │                                                     │
+│       ▼ Refresh failed                                      │
+│  ┌─────────────────────────────────┐                       │
+│  │ Notify admin via Telegram       │                       │
+│  │ "Re-authorization required"     │                       │
+│  └─────────────────────────────────┘                       │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Implementation Approach
+
+1. **Token Wrapper Class**: Each API client (Gmail, QuickBooks) wraps token retrieval
+   - Before each API call, check `expires_at`
+   - If within 5-minute buffer, proactively refresh
+   - Update database with new tokens
+
+2. **Proactive Refresh Job**: Background task runs every 30 minutes
+   - Query tokens expiring within next hour
+   - Refresh them preemptively
+   - Reduces latency on actual API calls
+
+3. **Failure Handling**:
+   - If refresh fails (revoked, expired refresh token), send Telegram alert
+   - Include re-authorization link in alert
+   - Log failure for debugging
+
+4. **Security**:
+   - Encrypt tokens at rest using application secret
+   - Never log token values
+   - Use Supabase RLS to restrict token table access
+
+### Re-authorization Flow
+
+When refresh tokens expire or are revoked:
+
+```
+Telegram Alert:
+⚠️ QuickBooks authorization expired
+
+QuickBooks access has been revoked or expired.
+Please re-authorize to continue creating estimates.
+
+[Re-authorize QuickBooks]
+```
+
+Button links to: `GET /auth/quickbooks/authorize`
+
+OAuth callback updates tokens in database, sends confirmation:
+
+```
+✅ QuickBooks re-authorized successfully
+```
+
+### Phase 1 OAuth Tasks
+- [ ] Create `oauth_tokens` table with encryption
+- [ ] Implement Gmail token refresh wrapper
+- [ ] Add Telegram alert for auth failures
+- [ ] Create `/auth/gmail/authorize` and callback endpoints
+
+### Phase 2 OAuth Tasks
+- [ ] Implement QuickBooks token refresh wrapper
+- [ ] Create `/auth/quickbooks/authorize` and callback endpoints
+- [ ] Add proactive token refresh background job
+
 ## Phase 1: Email Monitoring & Telegram Notifications
 
 ### Goal
