@@ -13,3 +13,8 @@ dist/
 # OS files
 .DS_Store
 docs/.DS_Store
+
+# Dashboard
+dashboard/.next/
+dashboard/node_modules/
+dashboard/.env.local
