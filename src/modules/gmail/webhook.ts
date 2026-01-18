@@ -3,10 +3,11 @@ import { getWatchState, getNewMessagesSinceHistoryId } from './watch.js';
 import { findContactByEmail, createEstimate } from '../../db/index.js';
 import type { EstimateItem } from '../../db/index.js';
 import { parseEstimateRequest } from '../ai/index.js';
-import { sendNotification, sendSimpleMessage, sendPricedEstimateNotification } from '../telegram/index.js';
+import { sendNotification, sendSimpleMessage, sendPricedEstimateNotification, sendStatusInquiryNotification, storeDraftResponse } from '../telegram/index.js';
 import type { EstimateRequestNotification } from '../telegram/index.js';
 import { suggestPricesForEstimate } from '../pricing/index.js';
 import type { ItemInput } from '../pricing/index.js';
+import { handleStatusInquiry } from '../email/index.js';
 
 export interface PubSubMessage {
   message: {
@@ -86,81 +87,129 @@ export async function processEmailMessage(messageId: string): Promise<boolean> {
   const parsed = await parseEstimateRequest({ from, subject, body });
   console.log('Parsed intent:', parsed.intent);
 
-  // Process new requests with pricing engine (Phase 2)
-  if (parsed.intent === 'new_request' && parsed.items.length > 0) {
-    // Get pricing suggestions
-    const itemInputs: ItemInput[] = parsed.items.map(item => ({
-      signType: item.signType,
-      size: item.size,
-      quantity: item.quantity,
-      material: item.material || undefined,
-      description: item.description || undefined,
-    }));
+  // Route by intent
+  switch (parsed.intent) {
+    case 'new_request':
+      // Process new requests with pricing engine (Phase 2)
+      if (parsed.items.length > 0) {
+        // Get pricing suggestions
+        const itemInputs: ItemInput[] = parsed.items.map(item => ({
+          signType: item.signType,
+          size: item.size,
+          quantity: item.quantity,
+          material: item.material || undefined,
+          description: item.description || undefined,
+        }));
 
-    const pricedItems = await suggestPricesForEstimate(itemInputs);
-    console.log('Priced items:', pricedItems.length);
+        const pricedItems = await suggestPricesForEstimate(itemInputs);
+        console.log('Priced items:', pricedItems.length);
 
-    // Create local estimate
-    const estimateItems: EstimateItem[] = pricedItems.map(item => ({
-      description: item.description,
-      signType: item.signType || undefined,
-      material: item.material || undefined,
-      width: item.width,
-      height: item.height,
-      quantity: item.quantity,
-      unitPrice: item.suggestedUnitPrice,
-      suggestedPrice: item.suggestedUnitPrice,
-      confidence: item.confidence,
-    }));
+        // Create local estimate
+        const estimateItems: EstimateItem[] = pricedItems.map(item => ({
+          description: item.description,
+          signType: item.signType || undefined,
+          material: item.material || undefined,
+          width: item.width,
+          height: item.height,
+          quantity: item.quantity,
+          unitPrice: item.suggestedUnitPrice,
+          suggestedPrice: item.suggestedUnitPrice,
+          confidence: item.confidence,
+        }));
 
-    const estimate = await createEstimate({
-      contactId: contact.id,
-      gmailMessageId: messageId,
-      items: estimateItems,
-      notes: parsed.specialRequests.join('; '),
-    });
+        const estimate = await createEstimate({
+          contactId: contact.id,
+          gmailMessageId: messageId,
+          items: estimateItems,
+          notes: parsed.specialRequests.join('; '),
+        });
 
-    if (!estimate) {
-      console.error('Failed to create estimate');
-      return false;
+        if (!estimate) {
+          console.error('Failed to create estimate');
+          return false;
+        }
+
+        // Send priced notification
+        await sendPricedEstimateNotification({
+          from: contact.name,
+          company: contact.company || '',
+          subject,
+          items: pricedItems,
+          specialRequests: parsed.specialRequests,
+          estimateId: estimate.id,
+          gmailMessageId: messageId,
+        });
+
+        console.log('Priced estimate notification sent');
+      } else {
+        // Fallback for new requests without items (keep simple notification)
+        const notification: EstimateRequestNotification = {
+          from: contact.name,
+          company: contact.company || '',
+          subject,
+          items: parsed.items,
+          specialRequests: parsed.specialRequests,
+          gmailMessageId: messageId,
+        };
+
+        await sendNotification(notification);
+        console.log('Telegram notification sent');
+      }
+      break;
+
+    case 'status_inquiry': {
+      const statusResult = await handleStatusInquiry({
+        contact,
+        keywords: parsed.keywords || [parsed.referencedJobDescription].filter(Boolean) as string[],
+        emailLanguage: parsed.language || 'en',
+        gmailMessageId: messageId,
+        subject,
+      });
+
+      if (!statusResult.success) {
+        console.error('Status inquiry handling failed:', statusResult.error);
+        await sendSimpleMessage(
+          `❓ Status inquiry from ${contact.name}\n\nSubject: ${subject}\n\n⚠️ Processing failed: ${statusResult.error || 'Unknown error'}`
+        );
+        break;
+      }
+
+      if (statusResult.draftResponse) {
+        storeDraftResponse(messageId, statusResult.draftResponse);
+      }
+
+      await sendStatusInquiryNotification({
+        contact: { name: contact.name, company: contact.company },
+        subject,
+        gmailMessageId: messageId,
+        matchedJob: statusResult.matchedJob,
+        multipleMatches: statusResult.multipleMatches,
+        noMatch: statusResult.noMatch,
+        searchTerms: parsed.keywords?.join(', ') || parsed.referencedJobDescription || '',
+        draftResponse: statusResult.draftResponse,
+      });
+      break;
     }
 
-    // Send priced notification
-    await sendPricedEstimateNotification({
-      from: contact.name,
-      company: contact.company || '',
-      subject,
-      items: pricedItems,
-      specialRequests: parsed.specialRequests,
-      estimateId: estimate.id,
-      gmailMessageId: messageId,
-    });
+    case 'reorder':
+      // TODO: Implement reorder flow in next task
+      await sendSimpleMessage(
+        `🔄 Reorder request from ${contact.name}\n\nSubject: ${subject}\n\n(Reorder handling coming soon)`
+      );
+      break;
 
-    console.log('Priced estimate notification sent');
-    return true;
-  }
+    case 'approval':
+      await sendSimpleMessage(
+        `✅ Approval received from ${contact.name}\n\nSubject: ${subject}`
+      );
+      // TODO: Auto-update job status
+      break;
 
-  // Fallback for new requests without items (keep simple notification)
-  if (parsed.intent === 'new_request') {
-    const notification: EstimateRequestNotification = {
-      from: contact.name,
-      company: contact.company || '',
-      subject,
-      items: parsed.items,
-      specialRequests: parsed.specialRequests,
-      gmailMessageId: messageId,
-    };
-
-    await sendNotification(notification);
-    console.log('Telegram notification sent');
-    return true;
-  }
-
-  // For other intents, send a simple notification for now
-  if (parsed.intent !== 'general') {
-    await sendSimpleMessage(
-      `📧 ${parsed.intent.replace('_', ' ')} from ${contact.name}\n\nSubject: ${subject}`
-    );
+    case 'general':
+    default:
+      // Don't notify for general messages
+      console.log('General message, no action taken');
+      break;
   }
 
   return true;
