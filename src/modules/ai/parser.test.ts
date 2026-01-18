@@ -174,6 +174,71 @@ describe('ai parser', () => {
         expect(result.intent).toBe(intent);
       }
     });
+
+    it('detects Korean language from email', async () => {
+      const koreanResponse = {
+        intent: 'status_inquiry' as const,
+        language: 'ko' as const,
+        items: [],
+        specialRequests: [],
+        keywords: ['채널 레터'],
+        referencedJobDescription: '채널 레터',
+      };
+
+      mockCreate.mockResolvedValueOnce({
+        content: [{ type: 'text', text: JSON.stringify(koreanResponse) }],
+      });
+
+      const result = await parseEstimateRequest({
+        from: 'minseok@samsung.com',
+        subject: '채널 레터 진행 상황',
+        body: '채널 레터 진행 상황이 어떻게 되나요?',
+      });
+
+      expect(result.language).toBe('ko');
+      expect(result.keywords).toContain('채널 레터');
+    });
+
+    it('detects English language from email', async () => {
+      const englishResponse = {
+        intent: 'status_inquiry' as const,
+        language: 'en' as const,
+        items: [],
+        specialRequests: [],
+        keywords: ['channel letters'],
+        referencedJobDescription: 'channel letters',
+      };
+
+      mockCreate.mockResolvedValueOnce({
+        content: [{ type: 'text', text: JSON.stringify(englishResponse) }],
+      });
+
+      const result = await parseEstimateRequest({
+        from: 'minseok@samsung.com',
+        subject: 'Channel Letters Status',
+        body: 'What is the status on the channel letters?',
+      });
+
+      expect(result.language).toBe('en');
+      expect(result.keywords).toContain('channel letters');
+    });
+
+    it('defaults language to en when not specified', async () => {
+      const responseWithoutLanguage = {
+        intent: 'general' as const,
+        items: [],
+        specialRequests: [],
+      };
+
+      mockCreate.mockResolvedValueOnce({
+        content: [{ type: 'text', text: JSON.stringify(responseWithoutLanguage) }],
+      });
+
+      const result = await parseEstimateRequest(mockEmail);
+
+      expect(result.language).toBe('en');
+      expect(result.keywords).toEqual([]);
+    });
   });
 
   describe('ParsedEstimateRequestSchema', () => {
@@ -185,7 +250,11 @@ describe('ai parser', () => {
       };
 
       const result = ParsedEstimateRequestSchema.parse(validData);
-      expect(result).toEqual(validData);
+      expect(result).toEqual({
+        ...validData,
+        language: 'en',
+        keywords: [],
+      });
     });
 
     it('rejects invalid intent values', () => {

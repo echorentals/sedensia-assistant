@@ -14,6 +14,7 @@ function getAnthropicClient(): Anthropic {
 
 export const ParsedEstimateRequestSchema = z.object({
   intent: z.enum(['new_request', 'status_inquiry', 'reorder', 'approval', 'general']),
+  language: z.enum(['ko', 'en']).default('en'),
   items: z.array(z.object({
     signType: z.string(),
     quantity: z.number(),
@@ -24,6 +25,7 @@ export const ParsedEstimateRequestSchema = z.object({
   specialRequests: z.array(z.string()),
   urgency: z.enum(['normal', 'urgent', 'rush']).nullish(),
   referencedJobDescription: z.string().nullish(),
+  keywords: z.array(z.string()).default([]),
 });
 
 export type ParsedEstimateRequest = z.infer<typeof ParsedEstimateRequestSchema>;
@@ -32,10 +34,12 @@ const SYSTEM_PROMPT = `You are an AI assistant that parses estimate request emai
 
 Extract the following information from the email:
 1. Intent: Is this a new estimate request, a status inquiry about an existing job, a reorder of previous signs, an approval of a quote, or a general message?
-2. Items: List each sign type requested with quantity, size, and material if mentioned
-3. Special Requests: Any specific requirements like colors (PMS codes), deadlines, installation needs
-4. Urgency: normal, urgent, or rush based on language used
-5. Referenced Job: If this is a status inquiry or reorder, what job/sign are they referring to?
+2. Language: Detect the primary language of the email - "ko" for Korean, "en" for English
+3. Items: List each sign type requested with quantity, size, and material if mentioned
+4. Special Requests: Any specific requirements like colors (PMS codes), deadlines, installation needs
+5. Urgency: normal, urgent, or rush based on language used
+6. Referenced Job: If this is a status inquiry or reorder, what job/sign are they referring to?
+7. Keywords: Extract key search terms that could identify a specific job (e.g., "channel letters", "Taylor facility", "wayfinding signs")
 
 Common sign types: Channel Letters, Monument Sign, Pylon Sign, Wall Sign, Wayfinding Sign, ADA Sign, Vinyl Graphics, Vehicle Wrap, Banner, A-Frame
 
@@ -44,10 +48,12 @@ Common materials: Aluminum, Acrylic, Dibond, PVC, Coroplast, HDU, Stainless Stee
 Respond with valid JSON matching this schema:
 {
   "intent": "new_request" | "status_inquiry" | "reorder" | "approval" | "general",
+  "language": "ko" | "en",
   "items": [{ "signType": string, "quantity": number, "size": string, "material": string | null, "description": string | null }],
   "specialRequests": string[],
   "urgency": "normal" | "urgent" | "rush" | null,
-  "referencedJobDescription": string | null
+  "referencedJobDescription": string | null,
+  "keywords": string[]
 }`;
 
 /**
