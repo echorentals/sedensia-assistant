@@ -22,6 +22,7 @@ import {
   createEstimate as createQBEstimate,
   findCustomerByName,
 } from '../quickbooks/index.js';
+import { getMessage, extractEmailContent, replyToThread } from '../gmail/index.js';
 
 // Store for edit sessions
 const editSessions = new Map<string, {
@@ -201,9 +202,60 @@ export function setupCallbackHandlers(): void {
       return;
     }
 
-    // TODO: Implement actual email sending in Task 12
-    await ctx.editMessageText(`✅ Response sent for job #${jobId.slice(0, 8)}`);
-    draftResponses.delete(gmailMessageId);
+    try {
+      // Get original message to find thread and recipient
+      const originalMessage = await getMessage(gmailMessageId);
+      if (!originalMessage) {
+        await ctx.reply('❌ Could not find original email.');
+        return;
+      }
+
+      const { from, subject } = extractEmailContent(originalMessage);
+      const threadId = originalMessage.threadId;
+
+      if (!threadId) {
+        await ctx.reply('❌ Could not find email thread.');
+        return;
+      }
+
+      // Extract email address from "Name <email>" format or plain email
+      const bracketMatch = from.match(/<([^>]+)>/);
+      let toEmail: string | null = null;
+      if (bracketMatch && bracketMatch[1].includes('@')) {
+        toEmail = bracketMatch[1].trim();
+      } else {
+        // Check if it's a plain email address
+        const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
+        const plainMatch = from.match(emailRegex);
+        toEmail = plainMatch ? plainMatch[0] : null;
+      }
+
+      if (!toEmail) {
+        await ctx.reply('❌ Could not determine recipient email address.');
+        return;
+      }
+
+      // Send reply
+      const sentId = await replyToThread({
+        threadId,
+        messageId: gmailMessageId,
+        to: toEmail,
+        subject: subject.startsWith('Re:') ? subject : `Re: ${subject}`,
+        body: draft,
+      });
+
+      if (sentId) {
+        await ctx.editMessageText(`✅ Response sent for job #${jobId.slice(0, 8)}\n\nEmail sent successfully.`);
+      } else {
+        await ctx.editMessageText(`❌ Failed to send email. Please try again or send manually.`);
+      }
+    } catch (error) {
+      console.error('Failed to send status response:', error);
+      await ctx.reply(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      // Always clean up draft, regardless of success/failure
+      draftResponses.delete(gmailMessageId);
+    }
   });
 
   bot.action(/^status_edit:(.+):(.+)$/, async (ctx) => {
