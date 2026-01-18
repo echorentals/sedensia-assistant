@@ -1,9 +1,12 @@
 import { getMessage, extractEmailContent } from './client.js';
 import { getWatchState, getNewMessagesSinceHistoryId } from './watch.js';
-import { findContactByEmail } from '../../db/index.js';
+import { findContactByEmail, createEstimate } from '../../db/index.js';
+import type { EstimateItem } from '../../db/index.js';
 import { parseEstimateRequest } from '../ai/index.js';
-import { sendNotification, sendSimpleMessage } from '../telegram/index.js';
+import { sendNotification, sendSimpleMessage, sendPricedEstimateNotification } from '../telegram/index.js';
 import type { EstimateRequestNotification } from '../telegram/index.js';
+import { suggestPricesForEstimate } from '../pricing/index.js';
+import type { ItemInput } from '../pricing/index.js';
 
 export interface PubSubMessage {
   message: {
@@ -83,7 +86,61 @@ export async function processEmailMessage(messageId: string): Promise<boolean> {
   const parsed = await parseEstimateRequest({ from, subject, body });
   console.log('Parsed intent:', parsed.intent);
 
-  // Only send notification for new requests (Phase 1)
+  // Process new requests with pricing engine (Phase 2)
+  if (parsed.intent === 'new_request' && parsed.items.length > 0) {
+    // Get pricing suggestions
+    const itemInputs: ItemInput[] = parsed.items.map(item => ({
+      signType: item.signType,
+      size: item.size,
+      quantity: item.quantity,
+      material: item.material || undefined,
+      description: item.description || undefined,
+    }));
+
+    const pricedItems = await suggestPricesForEstimate(itemInputs);
+    console.log('Priced items:', pricedItems.length);
+
+    // Create local estimate
+    const estimateItems: EstimateItem[] = pricedItems.map(item => ({
+      description: item.description,
+      signType: item.signType || undefined,
+      material: item.material || undefined,
+      width: item.width,
+      height: item.height,
+      quantity: item.quantity,
+      unitPrice: item.suggestedUnitPrice,
+      suggestedPrice: item.suggestedUnitPrice,
+      confidence: item.confidence,
+    }));
+
+    const estimate = await createEstimate({
+      contactId: contact.id,
+      gmailMessageId: messageId,
+      items: estimateItems,
+      notes: parsed.specialRequests.join('; '),
+    });
+
+    if (!estimate) {
+      console.error('Failed to create estimate');
+      return false;
+    }
+
+    // Send priced notification
+    await sendPricedEstimateNotification({
+      from: contact.name,
+      company: contact.company || '',
+      subject,
+      items: pricedItems,
+      specialRequests: parsed.specialRequests,
+      estimateId: estimate.id,
+      gmailMessageId: messageId,
+    });
+
+    console.log('Priced estimate notification sent');
+    return true;
+  }
+
+  // Fallback for new requests without items (keep simple notification)
   if (parsed.intent === 'new_request') {
     const notification: EstimateRequestNotification = {
       from: contact.name,
