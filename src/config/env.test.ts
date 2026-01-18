@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { z } from 'zod';
+
+// Mock dotenv to prevent loading from actual .env file
+vi.mock('dotenv/config', () => ({}));
 
 describe('env validation', () => {
   const originalEnv = process.env;
