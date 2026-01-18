@@ -7,6 +7,9 @@ import {
   type Material,
 } from '../../db/index.js';
 
+/** Default fallback price per square foot when no historical or base pricing is available */
+const DEFAULT_PRICE_PER_SQFT = 30;
+
 export interface PricedItem {
   description: string;
   signType: string | null;
@@ -33,12 +36,12 @@ export interface ItemInput {
   material?: string;
 }
 
-function parseDimensions(size: string): { width: number; height: number } {
+export function parseDimensions(size: string): { width: number; height: number } {
   // Parse common formats: "24x36", "24\"x36\"", "24 x 36", "2'x3'"
   const match = size.match(/(\d+(?:\.\d+)?)\s*['"]?\s*[xX×]\s*(\d+(?:\.\d+)?)\s*['"]?/);
 
   if (!match) {
-    // Default to 24x24 if parsing fails
+    console.warn(`Failed to parse dimensions from size string: "${size}", defaulting to 24x24`);
     return { width: 24, height: 24 };
   }
 
@@ -79,6 +82,8 @@ export async function suggestPriceForItem(input: ItemInput): Promise<PricedItem>
 
   if (suggestion && suggestion.sampleSize >= 3) {
     // Use historical pricing
+    // Note: suggestion.suggestedTotal is the suggested price for ONE item at this sqft
+    // (calculated as adjustedPricePerSqft * sqft in the DB layer)
     suggestedUnitPrice = suggestion.suggestedTotal;
     confidence = suggestion.confidence;
     sampleSize = suggestion.sampleSize;
@@ -109,7 +114,7 @@ export async function suggestPriceForItem(input: ItemInput): Promise<PricedItem>
     confidence = 'low';
   } else {
     // No data at all - use generic fallback
-    suggestedUnitPrice = sqft * 30; // Generic $30/sqft
+    suggestedUnitPrice = sqft * DEFAULT_PRICE_PER_SQFT;
     confidence = 'low';
     priceSource = 'base_formula';
   }
