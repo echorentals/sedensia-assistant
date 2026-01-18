@@ -230,7 +230,25 @@ export function setupOutcomeCommands(): void {
       await updatePricingOutcome(estimate.quickbooks_estimate_id, 'won');
     }
 
-    await ctx.reply(`🎉 Estimate #${estimate.quickbooks_doc_number || estimate.id.slice(0, 8)} marked as WON! Pricing history updated.`);
+    // Create job from won estimate
+    const { createJob } = await import('../../db/index.js');
+    const itemDescriptions = estimate.items.map(i => i.description).join(', ');
+    const job = await createJob({
+      estimateId: estimate.id,
+      contactId: estimate.contact_id,
+      description: itemDescriptions || 'No description',
+      totalAmount: estimate.total_amount,
+    });
+
+    if (job) {
+      await ctx.reply(
+        `🎉 Estimate #${estimate.quickbooks_doc_number || estimate.id.slice(0, 8)} marked as WON!\n\n` +
+        `📋 Job created: ${job.id.slice(0, 8)}\n` +
+        `Use /stage ${job.id.slice(0, 8)} <stage> to update progress.`
+      );
+    } else {
+      await ctx.reply(`🎉 Estimate marked as WON but failed to create job.`);
+    }
   });
 
   bot.command('lost', async (ctx) => {

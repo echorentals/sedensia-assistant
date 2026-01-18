@@ -22,3 +22,12 @@ export {
   type SignType,
   type Material,
 } from './pricing.js';
+export {
+  createJob,
+  getJobById,
+  getActiveJobs,
+  updateJobStage,
+  updateJobEta,
+  findJobByPrefix,
+  type Job,
+} from './jobs.js';
