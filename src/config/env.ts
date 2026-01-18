@@ -20,6 +20,11 @@ const envSchema = z.object({
   ENCRYPTION_KEY: z.string().length(64, 'Must be 64 hex characters (32 bytes)'),
 
   GMAIL_PUBSUB_TOPIC: z.string().optional(),
+
+  QUICKBOOKS_CLIENT_ID: z.string().min(1),
+  QUICKBOOKS_CLIENT_SECRET: z.string().min(1),
+  QUICKBOOKS_REDIRECT_URI: z.string().url(),
+  QUICKBOOKS_ENVIRONMENT: z.enum(['sandbox', 'production']).default('sandbox'),
 });
 
 const result = envSchema.safeParse(process.env);

@@ -33,10 +33,16 @@ describe('env validation', () => {
       TELEGRAM_ADMIN_CHAT_ID: '123456',
       ANTHROPIC_API_KEY: 'anthropic-key',
       ENCRYPTION_KEY: 'a'.repeat(64),
+      QUICKBOOKS_CLIENT_ID: 'quickbooks-id',
+      QUICKBOOKS_CLIENT_SECRET: 'quickbooks-secret',
+      QUICKBOOKS_REDIRECT_URI: 'http://localhost:3000/auth/quickbooks/callback',
+      QUICKBOOKS_ENVIRONMENT: 'sandbox',
     };
 
     const { env } = await import('./env.js');
     expect(env.PORT).toBe(3000);
     expect(env.SUPABASE_URL).toBe('https://test.supabase.co');
+    expect(env.QUICKBOOKS_CLIENT_ID).toBe('quickbooks-id');
+    expect(env.QUICKBOOKS_ENVIRONMENT).toBe('sandbox');
   });
 });
