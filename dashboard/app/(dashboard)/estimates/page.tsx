@@ -1,3 +1,4 @@
+import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { EstimatesTable } from '@/components/estimates-table';
 import type { EstimateWithContact } from '@/lib/database.types';
@@ -23,6 +24,10 @@ async function getEstimates(): Promise<EstimateWithContact[]> {
 }
 
 export default async function EstimatesPage() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
   const estimates = await getEstimates();
 
   return (

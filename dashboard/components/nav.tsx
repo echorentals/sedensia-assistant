@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { LayoutDashboard, Briefcase, FileText, Users, DollarSign, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { logout } from '@/app/login/actions';
+import { logout } from '@/app/(auth)/login/actions';
 
 const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },

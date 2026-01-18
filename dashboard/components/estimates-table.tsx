@@ -1,5 +1,4 @@
 import { format } from 'date-fns';
-import Link from 'next/link';
 import {
   Table,
   TableBody,
@@ -40,17 +39,12 @@ export function EstimatesTable({ estimates }: EstimatesTableProps) {
           {estimates.map((estimate) => (
             <TableRow key={estimate.id}>
               <TableCell>
-                <Link
-                  href={`/estimates/${estimate.id}`}
-                  className="hover:underline"
-                >
-                  <div className="font-medium">
-                    {estimate.contact?.name || 'Unknown'}
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    {estimate.contact?.company || ''}
-                  </div>
-                </Link>
+                <div className="font-medium">
+                  {estimate.contact?.name || 'Unknown'}
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  {estimate.contact?.company || ''}
+                </div>
               </TableCell>
               <TableCell>
                 {format(new Date(estimate.created_at), 'MMM d, yyyy')}

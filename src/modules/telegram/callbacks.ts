@@ -9,6 +9,11 @@ import {
   updatePricingOutcome,
   getPendingEstimates,
   getRecentEstimates,
+  createJob,
+  getActiveJobs,
+  findJobByPrefix,
+  updateJobStage,
+  updateJobEta,
 } from '../../db/index.js';
 import {
   createEstimate as createQBEstimate,
@@ -231,7 +236,6 @@ export function setupOutcomeCommands(): void {
     }
 
     // Create job from won estimate
-    const { createJob } = await import('../../db/index.js');
     const itemDescriptions = estimate.items.map(i => i.description).join(', ');
     const job = await createJob({
       estimateId: estimate.id,
@@ -290,7 +294,6 @@ export function setupOutcomeCommands(): void {
 
   // List active jobs
   bot.command('jobs', async (ctx) => {
-    const { getActiveJobs } = await import('../../db/index.js');
     const jobs = await getActiveJobs();
 
     if (jobs.length === 0) {
@@ -314,7 +317,6 @@ export function setupOutcomeCommands(): void {
       return;
     }
 
-    const { findJobByPrefix } = await import('../../db/index.js');
     const job = await findJobByPrefix(args[1]);
     if (!job) {
       await ctx.reply(`❌ No job found starting with "${args[1]}"`);
@@ -351,7 +353,6 @@ export function setupOutcomeCommands(): void {
       return;
     }
 
-    const { findJobByPrefix, updateJobStage } = await import('../../db/index.js');
     const job = await findJobByPrefix(args[1]);
     if (!job) {
       await ctx.reply(`❌ No job found starting with "${args[1]}"`);
@@ -380,7 +381,6 @@ export function setupOutcomeCommands(): void {
       return;
     }
 
-    const { findJobByPrefix, updateJobEta } = await import('../../db/index.js');
     const job = await findJobByPrefix(args[1]);
     if (!job) {
       await ctx.reply(`❌ No job found starting with "${args[1]}"`);

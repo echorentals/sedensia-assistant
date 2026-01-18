@@ -91,9 +91,11 @@ export function JobsTable({ jobs }: JobsTableProps) {
                   onValueChange={(value) => handleStageChange(job.id, value)}
                 >
                   <SelectTrigger className="w-36">
-                    <Badge className={stageColors[job.stage]}>
-                      {stageLabels[job.stage]}
-                    </Badge>
+                    <SelectValue>
+                      <Badge className={stageColors[job.stage]}>
+                        {stageLabels[job.stage]}
+                      </Badge>
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {Object.entries(stageLabels).map(([value, label]) => (

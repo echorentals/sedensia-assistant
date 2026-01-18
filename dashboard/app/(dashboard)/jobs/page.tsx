@@ -1,3 +1,4 @@
+import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { JobsTable } from '@/components/jobs-table';
 import type { JobWithContact } from '@/lib/database.types';
@@ -24,6 +25,10 @@ async function getJobs(): Promise<JobWithContact[]> {
 }
 
 export default async function JobsPage() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
   const jobs = await getJobs();
 
   return (
