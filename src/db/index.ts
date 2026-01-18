@@ -31,3 +31,10 @@ export {
   findJobByPrefix,
   type Job,
 } from './jobs.js';
+export {
+  getTelegramUser,
+  upsertTelegramUser,
+  setUserLanguage,
+  getUserLanguage,
+  type TelegramUser,
+} from './telegram-users.js';
