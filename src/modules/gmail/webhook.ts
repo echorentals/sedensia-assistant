@@ -3,11 +3,11 @@ import { getWatchState, getNewMessagesSinceHistoryId } from './watch.js';
 import { findContactByEmail, createEstimate } from '../../db/index.js';
 import type { EstimateItem } from '../../db/index.js';
 import { parseEstimateRequest } from '../ai/index.js';
-import { sendNotification, sendSimpleMessage, sendPricedEstimateNotification, sendStatusInquiryNotification, storeDraftResponse } from '../telegram/index.js';
+import { sendNotification, sendSimpleMessage, sendPricedEstimateNotification, sendStatusInquiryNotification, sendReorderNotification, storeDraftResponse } from '../telegram/index.js';
 import type { EstimateRequestNotification } from '../telegram/index.js';
 import { suggestPricesForEstimate } from '../pricing/index.js';
 import type { ItemInput } from '../pricing/index.js';
-import { handleStatusInquiry } from '../email/index.js';
+import { handleStatusInquiry, handleReorder } from '../email/index.js';
 
 export interface PubSubMessage {
   message: {
@@ -191,12 +191,32 @@ export async function processEmailMessage(messageId: string): Promise<boolean> {
       break;
     }
 
-    case 'reorder':
-      // TODO: Implement reorder flow in next task
-      await sendSimpleMessage(
-        `🔄 Reorder request from ${contact.name}\n\nSubject: ${subject}\n\n(Reorder handling coming soon)`
-      );
+    case 'reorder': {
+      const reorderResult = await handleReorder({
+        contact,
+        keywords: parsed.keywords || [parsed.referencedJobDescription].filter(Boolean) as string[],
+        emailLanguage: parsed.language || 'en',
+        gmailMessageId: messageId,
+        originalMessage: body.slice(0, 200),
+      });
+
+      if (!reorderResult.success) {
+        console.error('Reorder handling failed:', reorderResult.error);
+        await sendSimpleMessage(
+          `🔄 Reorder request from ${contact.name}\n\nSubject: ${subject}\n\n⚠️ Processing failed: ${reorderResult.error || 'Unknown error'}`
+        );
+        break;
+      }
+
+      await sendReorderNotification({
+        contact: { name: contact.name, company: contact.company },
+        gmailMessageId: messageId,
+        originalMessage: body.slice(0, 200),
+        previousEstimate: reorderResult.previousEstimate,
+        noMatch: reorderResult.noMatch,
+      });
       break;
+    }
 
     case 'approval':
       await sendSimpleMessage(

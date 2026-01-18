@@ -303,6 +303,36 @@ export function setupCallbackHandlers(): void {
     // TODO: Redirect to new estimate flow
   });
 
+  // Reorder callbacks
+  bot.action(/^reorder_same:(.+):(.+)$/, async (ctx) => {
+    const estimateId = ctx.match[1];
+    const gmailMessageId = ctx.match[2];
+    await ctx.answerCbQuery('Creating estimate...');
+    // TODO: Create new estimate with same items and prices
+    await ctx.editMessageText(`📋 Creating estimate from previous order #${estimateId.slice(0, 8)}...\n\n(Estimate creation coming soon)`);
+  });
+
+  bot.action(/^reorder_edit:(.+):(.+)$/, async (ctx) => {
+    const estimateId = ctx.match[1];
+    const gmailMessageId = ctx.match[2];
+    await ctx.answerCbQuery();
+    // TODO: Show edit interface for prices
+    await ctx.editMessageText(`✏️ Edit mode for order #${estimateId.slice(0, 8)}...\n\n(Price editing interface coming soon)`);
+  });
+
+  bot.action(/^reorder_new:(.+)$/, async (ctx) => {
+    const gmailMessageId = ctx.match[1];
+    await ctx.answerCbQuery();
+    await ctx.editMessageText(`📝 Treating as new estimate request...\n\n(Processing as new request)`);
+    // TODO: Redirect to new estimate flow
+  });
+
+  bot.action(/^reorder_ignore:(.+)$/, async (ctx) => {
+    const gmailMessageId = ctx.match[1];
+    await ctx.answerCbQuery('Ignored');
+    await ctx.editMessageText('📥 Reorder request archived.');
+  });
+
   // Handle text replies for editing
   bot.on('text', async (ctx) => {
     const userId = ctx.from?.id.toString() || '';

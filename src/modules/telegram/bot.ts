@@ -1,8 +1,8 @@
 import { Telegraf, Markup } from 'telegraf';
 import { env } from '../../config/index.js';
 import type { PricedItem } from '../pricing/index.js';
-import { t, formatStatusInquiry, formatNoMatch, formatMultipleMatches } from './i18n.js';
-import { getUserLanguage } from '../../db/index.js';
+import { t, formatStatusInquiry, formatNoMatch, formatMultipleMatches, formatReorderRequest } from './i18n.js';
+import { getUserLanguage, type Estimate } from '../../db/index.js';
 import type { JobMatch } from '../jobs/index.js';
 
 export const bot = new Telegraf(env.TELEGRAM_BOT_TOKEN);
@@ -211,6 +211,81 @@ export async function sendStatusInquiryNotification(data: StatusInquiryNotificat
     }
   } catch (error) {
     console.error('Failed to send status inquiry notification:', error);
+    throw error;
+  }
+}
+
+export interface ReorderNotificationData {
+  telegramUserId?: string;
+  contact: { name: string; company: string | null };
+  gmailMessageId: string;
+  originalMessage: string;
+  previousEstimate?: Estimate;
+  noMatch?: boolean;
+}
+
+export async function sendReorderNotification(data: ReorderNotificationData): Promise<void> {
+  try {
+    const lang = data.telegramUserId
+      ? await getUserLanguage(data.telegramUserId)
+      : 'ko';
+
+    if (data.noMatch || !data.previousEstimate) {
+      // No match found - show options for new estimate or ignore
+      const message = `🔄 ${t(lang, 'reorderRequest')} - ${data.contact.company || data.contact.name}
+
+${t(lang, 'from')}: ${data.contact.name}
+"${data.originalMessage.slice(0, 100)}${data.originalMessage.length > 100 ? '...' : ''}"
+
+${t(lang, 'noMatchFound')}`;
+
+      await bot.telegram.sendMessage(
+        env.TELEGRAM_ADMIN_CHAT_ID,
+        message,
+        Markup.inlineKeyboard([
+          [
+            Markup.button.callback(t(lang, 'newEstimate'), `reorder_new:${data.gmailMessageId}`),
+            Markup.button.callback(t(lang, 'ignore'), `reorder_ignore:${data.gmailMessageId}`),
+          ],
+        ])
+      );
+      return;
+    }
+
+    // Previous estimate found - show formatted reorder request
+    const estimate = data.previousEstimate;
+    const items = estimate.items.map(item => ({
+      description: item.description,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      total: item.quantity * item.unitPrice,
+    }));
+    const total = items.reduce((sum, item) => sum + item.total, 0);
+
+    const message = formatReorderRequest(lang, {
+      company: data.contact.company || data.contact.name,
+      from: data.contact.name,
+      originalMessage: data.originalMessage.slice(0, 100) + (data.originalMessage.length > 100 ? '...' : ''),
+      previousOrderDate: new Date(estimate.created_at).toLocaleDateString(),
+      items,
+      total,
+    });
+
+    await bot.telegram.sendMessage(
+      env.TELEGRAM_ADMIN_CHAT_ID,
+      message,
+      Markup.inlineKeyboard([
+        [
+          Markup.button.callback(t(lang, 'createEstimateSamePrice'), `reorder_same:${estimate.id}:${data.gmailMessageId}`),
+        ],
+        [
+          Markup.button.callback(t(lang, 'editPrices'), `reorder_edit:${estimate.id}:${data.gmailMessageId}`),
+          Markup.button.callback(t(lang, 'ignore'), `reorder_ignore:${data.gmailMessageId}`),
+        ],
+      ])
+    );
+  } catch (error) {
+    console.error('Failed to send reorder notification:', error);
     throw error;
   }
 }
