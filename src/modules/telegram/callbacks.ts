@@ -14,6 +14,9 @@ import {
   findJobByPrefix,
   updateJobStage,
   updateJobEta,
+  getTelegramUser,
+  upsertTelegramUser,
+  setUserLanguage,
 } from '../../db/index.js';
 import {
   createEstimate as createQBEstimate,
@@ -392,6 +395,51 @@ export function setupOutcomeCommands(): void {
       await ctx.reply(`✅ Job ${job.id.slice(0, 8)} ETA set to: ${dateStr}`);
     } else {
       await ctx.reply(`❌ Failed to update job ETA.`);
+    }
+  });
+
+  // Language preference command
+  bot.command('lang', async (ctx) => {
+    const args = ctx.message.text.split(' ');
+    const userId = ctx.from?.id.toString();
+
+    if (!userId) {
+      await ctx.reply('Could not identify user.');
+      return;
+    }
+
+    if (args.length < 2) {
+      const user = await getTelegramUser(userId);
+      const currentLang = user?.language || 'ko';
+      await ctx.reply(
+        currentLang === 'ko'
+          ? `현재 언어: 한국어\n\n사용법: /lang <ko|en>`
+          : `Current language: English\n\nUsage: /lang <ko|en>`
+      );
+      return;
+    }
+
+    const lang = args[1].toLowerCase();
+    if (lang !== 'ko' && lang !== 'en') {
+      await ctx.reply('Invalid language. Use: /lang ko or /lang en');
+      return;
+    }
+
+    // Ensure user exists
+    const user = await upsertTelegramUser(userId, ctx.from?.first_name);
+    if (!user) {
+      await ctx.reply('Failed to create user record.');
+      return;
+    }
+    const success = await setUserLanguage(userId, lang);
+
+    if (success) {
+      const message = lang === 'ko'
+        ? '✅ 언어가 한국어로 설정되었습니다.\n모든 알림이 한국어로 표시됩니다.'
+        : '✅ Language set to English.\nAll notifications will now be in English.';
+      await ctx.reply(message);
+    } else {
+      await ctx.reply('Failed to update language preference.');
     }
   });
 }
