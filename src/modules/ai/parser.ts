@@ -18,6 +18,7 @@ export const ParsedEstimateRequestSchema = z.object({
     signType: z.string(),
     quantity: z.number(),
     size: z.string(),
+    material: z.string().nullish(),
     description: z.string().nullish(),
   })),
   specialRequests: z.array(z.string()),
@@ -31,17 +32,21 @@ const SYSTEM_PROMPT = `You are an AI assistant that parses estimate request emai
 
 Extract the following information from the email:
 1. Intent: Is this a new estimate request, a status inquiry about an existing job, a reorder of previous signs, an approval of a quote, or a general message?
-2. Items: List each sign type requested with quantity and size
-3. Special Requests: Any specific requirements like colors (PMS codes), materials, deadlines
+2. Items: List each sign type requested with quantity, size, and material if mentioned
+3. Special Requests: Any specific requirements like colors (PMS codes), deadlines, installation needs
 4. Urgency: normal, urgent, or rush based on language used
 5. Referenced Job: If this is a status inquiry or reorder, what job/sign are they referring to?
+
+Common sign types: Channel Letters, Monument Sign, Pylon Sign, Wall Sign, Wayfinding Sign, ADA Sign, Vinyl Graphics, Vehicle Wrap, Banner, A-Frame
+
+Common materials: Aluminum, Acrylic, Dibond, PVC, Coroplast, HDU, Stainless Steel, Bronze
 
 Respond with valid JSON matching this schema:
 {
   "intent": "new_request" | "status_inquiry" | "reorder" | "approval" | "general",
-  "items": [{ "signType": string, "quantity": number, "size": string, "description": string }],
+  "items": [{ "signType": string, "quantity": number, "size": string, "material": string | null, "description": string | null }],
   "specialRequests": string[],
-  "urgency": "normal" | "urgent" | "rush",
+  "urgency": "normal" | "urgent" | "rush" | null,
   "referencedJobDescription": string | null
 }`;
 
