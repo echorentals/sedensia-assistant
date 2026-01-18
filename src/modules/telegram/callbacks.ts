@@ -287,6 +287,113 @@ export function setupOutcomeCommands(): void {
 
     await ctx.reply(`📋 Pending Estimates:\n\n${list}\n\nUse /won <id> or /lost <id> to update.`);
   });
+
+  // List active jobs
+  bot.command('jobs', async (ctx) => {
+    const { getActiveJobs } = await import('../../db/index.js');
+    const jobs = await getActiveJobs();
+
+    if (jobs.length === 0) {
+      await ctx.reply('No active jobs.');
+      return;
+    }
+
+    const list = jobs.map(job => {
+      const eta = job.eta ? ` | ETA: ${job.eta}` : '';
+      return `• ${job.id.slice(0, 8)} | ${job.stage}${eta}\n  ${job.description.slice(0, 50)}...`;
+    }).join('\n\n');
+
+    await ctx.reply(`📋 Active Jobs:\n\n${list}\n\nUse /job <id> for details.`);
+  });
+
+  // Show job details
+  bot.command('job', async (ctx) => {
+    const args = ctx.message.text.split(' ');
+    if (args.length < 2) {
+      await ctx.reply('Usage: /job <job_id_prefix>');
+      return;
+    }
+
+    const { findJobByPrefix } = await import('../../db/index.js');
+    const job = await findJobByPrefix(args[1]);
+    if (!job) {
+      await ctx.reply(`❌ No job found starting with "${args[1]}"`);
+      return;
+    }
+
+    const eta = job.eta || 'Not set';
+    const amount = job.total_amount ? `$${job.total_amount.toLocaleString()}` : 'N/A';
+
+    await ctx.reply(
+      `📋 Job: ${job.id.slice(0, 8)}\n\n` +
+      `Stage: ${job.stage}\n` +
+      `ETA: ${eta}\n` +
+      `Amount: ${amount}\n\n` +
+      `${job.description}\n\n` +
+      `Commands:\n` +
+      `/stage ${job.id.slice(0, 8)} <pending|in_production|ready|installed|completed>\n` +
+      `/eta ${job.id.slice(0, 8)} <YYYY-MM-DD>`
+    );
+  });
+
+  // Update job stage
+  bot.command('stage', async (ctx) => {
+    const args = ctx.message.text.split(' ');
+    if (args.length < 3) {
+      await ctx.reply('Usage: /stage <job_id> <pending|in_production|ready|installed|completed>');
+      return;
+    }
+
+    const validStages = ['pending', 'in_production', 'ready', 'installed', 'completed'];
+    const stage = args[2].toLowerCase();
+    if (!validStages.includes(stage)) {
+      await ctx.reply(`Invalid stage. Use: ${validStages.join(', ')}`);
+      return;
+    }
+
+    const { findJobByPrefix, updateJobStage } = await import('../../db/index.js');
+    const job = await findJobByPrefix(args[1]);
+    if (!job) {
+      await ctx.reply(`❌ No job found starting with "${args[1]}"`);
+      return;
+    }
+
+    const success = await updateJobStage(job.id, stage as 'pending' | 'in_production' | 'ready' | 'installed' | 'completed');
+    if (success) {
+      await ctx.reply(`✅ Job ${job.id.slice(0, 8)} updated to: ${stage}`);
+    } else {
+      await ctx.reply(`❌ Failed to update job stage.`);
+    }
+  });
+
+  // Update job ETA
+  bot.command('eta', async (ctx) => {
+    const args = ctx.message.text.split(' ');
+    if (args.length < 3) {
+      await ctx.reply('Usage: /eta <job_id> <YYYY-MM-DD>');
+      return;
+    }
+
+    const dateStr = args[2];
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      await ctx.reply('Invalid date format. Use: YYYY-MM-DD (e.g., 2026-01-25)');
+      return;
+    }
+
+    const { findJobByPrefix, updateJobEta } = await import('../../db/index.js');
+    const job = await findJobByPrefix(args[1]);
+    if (!job) {
+      await ctx.reply(`❌ No job found starting with "${args[1]}"`);
+      return;
+    }
+
+    const success = await updateJobEta(job.id, dateStr);
+    if (success) {
+      await ctx.reply(`✅ Job ${job.id.slice(0, 8)} ETA set to: ${dateStr}`);
+    } else {
+      await ctx.reply(`❌ Failed to update job ETA.`);
+    }
+  });
 }
 
 async function findEstimateByPrefix(prefix: string): Promise<Estimate | null> {
