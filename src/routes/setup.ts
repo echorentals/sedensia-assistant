@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { setupGmailWatch, getWatchState } from '../modules/gmail/watch.js';
 import { sendSimpleMessage } from '../modules/telegram/index.js';
+import { importHistoricalEstimates } from '../modules/quickbooks/index.js';
 
 export async function setupRoutes(fastify: FastifyInstance): Promise<void> {
   // Set up Gmail Pub/Sub watch
@@ -38,5 +39,21 @@ export async function setupRoutes(fastify: FastifyInstance): Promise<void> {
       expiration: state.expiration,
       isExpired,
     });
+  });
+
+  // Import historical estimates from QuickBooks
+  fastify.post('/setup/quickbooks/import', async (request, reply) => {
+    try {
+      const result = await importHistoricalEstimates();
+
+      await sendSimpleMessage(
+        `QuickBooks import complete\n\nImported: ${result.imported}\nSkipped: ${result.skipped}\nErrors: ${result.errors}`
+      );
+
+      return reply.send(result);
+    } catch (error) {
+      console.error('Import failed:', error);
+      return reply.status(500).send({ error: String(error) });
+    }
   });
 }

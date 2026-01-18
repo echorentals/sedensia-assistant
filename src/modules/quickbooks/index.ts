@@ -15,3 +15,4 @@ export {
   type CreateEstimateInput,
   type QuickBooksClient,
 } from './client.js';
+export { importHistoricalEstimates, type ImportResult } from './import.js';
