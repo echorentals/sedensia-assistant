@@ -1,5 +1,10 @@
 import { FastifyInstance } from 'fastify';
-import { handleGmailWebhook, type PubSubMessage } from '../modules/gmail/webhook.js';
+import {
+  handleGmailWebhook,
+  processEmailMessage,
+  type PubSubMessage,
+} from '../modules/gmail/webhook.js';
+import { env } from '../config/index.js';
 
 export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
   // Gmail Pub/Sub webhook
@@ -13,6 +18,28 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       return reply.status(200).send({ ok: false });
     }
   });
+
+  // Development: manually trigger email processing
+  if (env.NODE_ENV === 'development') {
+    fastify.post<{ Body: { messageId: string } }>(
+      '/dev/process-email',
+      async (request, reply) => {
+        const { messageId } = request.body;
+
+        if (!messageId) {
+          return reply.status(400).send({ error: 'messageId required' });
+        }
+
+        try {
+          const processed = await processEmailMessage(messageId);
+          return reply.send({ processed, messageId });
+        } catch (error) {
+          console.error('Email processing error:', error);
+          return reply.status(500).send({ error: String(error) });
+        }
+      }
+    );
+  }
 
   // Health check
   fastify.get('/health', async () => {
