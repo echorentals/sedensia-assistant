@@ -28,7 +28,23 @@ const editSessions = new Map<string, {
   estimateId: string;
   itemIndex: number;
   step: 'select_item' | 'enter_price';
+} | {
+  type: 'status_response';
+  jobId: string;
+  gmailMessageId: string;
+  originalDraft: string;
 }>();
+
+// Store draft responses temporarily
+const draftResponses = new Map<string, string>();
+
+export function storeDraftResponse(gmailMessageId: string, draft: string): void {
+  draftResponses.set(gmailMessageId, draft);
+}
+
+export function getDraftResponse(gmailMessageId: string): string | undefined {
+  return draftResponses.get(gmailMessageId);
+}
 
 export function setupCallbackHandlers(): void {
   // Approve estimate
@@ -130,7 +146,7 @@ export function setupCallbackHandlers(): void {
     const userId = ctx.from?.id.toString() || '';
 
     const session = editSessions.get(userId);
-    if (!session) {
+    if (!session || !('estimateId' in session)) {
       await ctx.answerCbQuery('Session expired, please start over');
       return;
     }
@@ -144,9 +160,11 @@ export function setupCallbackHandlers(): void {
     }
 
     const item = estimate.items[itemIndex];
-    session.itemIndex = itemIndex;
-    session.step = 'enter_price';
-    editSessions.set(userId, session);
+    editSessions.set(userId, {
+      ...session,
+      itemIndex,
+      step: 'enter_price',
+    });
 
     await ctx.reply(
       `${item.description}\n\nCurrent price: $${item.unitPrice.toLocaleString()}\n\nReply with new price (number only):`,
@@ -171,49 +189,132 @@ export function setupCallbackHandlers(): void {
     await ctx.editMessageText('❌ Estimate rejected and archived.');
   });
 
-  // Handle text replies for price editing
+  // Status inquiry callbacks
+  bot.action(/^status_send:(.+):(.+)$/, async (ctx) => {
+    const jobId = ctx.match[1];
+    const gmailMessageId = ctx.match[2];
+    await ctx.answerCbQuery('Sending...');
+
+    const draft = getDraftResponse(gmailMessageId);
+    if (!draft) {
+      await ctx.reply('❌ Draft response not found. Please try again.');
+      return;
+    }
+
+    // TODO: Implement actual email sending in Task 12
+    await ctx.editMessageText(`✅ Response sent for job #${jobId.slice(0, 8)}`);
+    draftResponses.delete(gmailMessageId);
+  });
+
+  bot.action(/^status_edit:(.+):(.+)$/, async (ctx) => {
+    const jobId = ctx.match[1];
+    const gmailMessageId = ctx.match[2];
+    await ctx.answerCbQuery();
+
+    const draft = getDraftResponse(gmailMessageId);
+    const userId = ctx.from?.id.toString() || '';
+
+    // Store edit session
+    editSessions.set(userId, {
+      type: 'status_response',
+      jobId,
+      gmailMessageId,
+      originalDraft: draft || '',
+    });
+
+    await ctx.reply(
+      `Current draft:\n\n${draft}\n\nReply with your edited message:`,
+      { reply_markup: { force_reply: true } }
+    );
+  });
+
+  bot.action(/^status_ignore:(.+)$/, async (ctx) => {
+    const gmailMessageId = ctx.match[1];
+    await ctx.answerCbQuery('Ignored');
+    await ctx.editMessageText('📥 Status inquiry archived.');
+    draftResponses.delete(gmailMessageId);
+  });
+
+  bot.action(/^status_select:(.+):(.+)$/, async (ctx) => {
+    const jobId = ctx.match[1];
+    const gmailMessageId = ctx.match[2];
+    await ctx.answerCbQuery('Selected');
+
+    // TODO: Re-process with selected job
+    await ctx.editMessageText(`Selected job #${jobId.slice(0, 8)}. Processing...`);
+  });
+
+  bot.action(/^status_new_estimate:(.+)$/, async (ctx) => {
+    const gmailMessageId = ctx.match[1];
+    await ctx.answerCbQuery();
+    await ctx.editMessageText(`Treating as new estimate request...`);
+    // TODO: Redirect to new estimate flow
+  });
+
+  // Handle text replies for editing
   bot.on('text', async (ctx) => {
     const userId = ctx.from?.id.toString() || '';
     const session = editSessions.get(userId);
 
-    if (!session || session.step !== 'enter_price') {
+    if (!session) {
       return; // Not in an edit session
     }
 
-    const newPrice = parseFloat(ctx.message.text.replace(/[,$]/g, ''));
-    if (isNaN(newPrice) || newPrice < 0) {
-      await ctx.reply('Please enter a valid number (e.g., 1500 or 1,500)');
-      return;
-    }
-
-    const estimate = await getEstimateById(session.estimateId);
-    if (!estimate) {
-      await ctx.reply('❌ Estimate not found');
+    // Handle status response editing
+    if ('type' in session && session.type === 'status_response') {
+      const editedMessage = ctx.message.text;
+      draftResponses.set(session.gmailMessageId, editedMessage);
       editSessions.delete(userId);
+
+      await ctx.reply(
+        `✅ Draft updated.\n\n"${editedMessage.slice(0, 100)}${editedMessage.length > 100 ? '...' : ''}"`,
+        Markup.inlineKeyboard([
+          [
+            Markup.button.callback('Send', `status_send:${session.jobId}:${session.gmailMessageId}`),
+            Markup.button.callback('Edit Again', `status_edit:${session.jobId}:${session.gmailMessageId}`),
+          ],
+        ])
+      );
       return;
     }
 
-    // Update the item price
-    const updatedItems = [...estimate.items];
-    updatedItems[session.itemIndex] = {
-      ...updatedItems[session.itemIndex],
-      unitPrice: newPrice,
-    };
+    // Handle estimate price editing
+    if ('step' in session && session.step === 'enter_price') {
+      const newPrice = parseFloat(ctx.message.text.replace(/[,$]/g, ''));
+      if (isNaN(newPrice) || newPrice < 0) {
+        await ctx.reply('Please enter a valid number (e.g., 1500 or 1,500)');
+        return;
+      }
 
-    await updateEstimateItems(session.estimateId, updatedItems);
-    editSessions.delete(userId);
+      const estimate = await getEstimateById(session.estimateId);
+      if (!estimate) {
+        await ctx.reply('❌ Estimate not found');
+        editSessions.delete(userId);
+        return;
+      }
 
-    const newTotal = updatedItems.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+      // Update the item price
+      const updatedItems = [...estimate.items];
+      updatedItems[session.itemIndex] = {
+        ...updatedItems[session.itemIndex],
+        unitPrice: newPrice,
+      };
 
-    await ctx.reply(
-      `✅ Updated to $${newPrice.toLocaleString()}\n\nNew total: $${newTotal.toLocaleString()}`,
-      Markup.inlineKeyboard([
-        [
-          Markup.button.callback('✓ Approve', `approve_estimate:${session.estimateId}`),
-          Markup.button.callback('✏️ Edit More', `edit_estimate:${session.estimateId}`),
-        ],
-      ])
-    );
+      await updateEstimateItems(session.estimateId, updatedItems);
+      editSessions.delete(userId);
+
+      const newTotal = updatedItems.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+
+      await ctx.reply(
+        `✅ Updated to $${newPrice.toLocaleString()}\n\nNew total: $${newTotal.toLocaleString()}`,
+        Markup.inlineKeyboard([
+          [
+            Markup.button.callback('✓ Approve', `approve_estimate:${session.estimateId}`),
+            Markup.button.callback('✏️ Edit More', `edit_estimate:${session.estimateId}`),
+          ],
+        ])
+      );
+    }
   });
 }
 

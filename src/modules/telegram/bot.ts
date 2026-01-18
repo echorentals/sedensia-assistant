@@ -1,6 +1,9 @@
 import { Telegraf, Markup } from 'telegraf';
 import { env } from '../../config/index.js';
 import type { PricedItem } from '../pricing/index.js';
+import { t, formatStatusInquiry, formatNoMatch, formatMultipleMatches } from './i18n.js';
+import { getUserLanguage } from '../../db/index.js';
+import type { JobMatch } from '../jobs/index.js';
 
 export const bot = new Telegraf(env.TELEGRAM_BOT_TOKEN);
 
@@ -118,4 +121,96 @@ Total: $${total.toLocaleString()}${specialRequestsList}`;
       ],
     ])
   );
+}
+
+export interface StatusInquiryNotificationData {
+  telegramUserId?: string;
+  contact: { name: string; company: string | null };
+  subject: string;
+  gmailMessageId: string;
+  matchedJob?: JobMatch;
+  multipleMatches?: JobMatch[];
+  noMatch?: boolean;
+  searchTerms?: string;
+  draftResponse?: string;
+}
+
+export async function sendStatusInquiryNotification(data: StatusInquiryNotificationData): Promise<void> {
+  try {
+    const lang = data.telegramUserId
+      ? await getUserLanguage(data.telegramUserId)
+      : 'ko';
+
+    if (data.noMatch) {
+      const message = formatNoMatch(lang, data.searchTerms || '');
+      await bot.telegram.sendMessage(
+        env.TELEGRAM_ADMIN_CHAT_ID,
+        message,
+        Markup.inlineKeyboard([
+          [
+            Markup.button.callback(t(lang, 'newEstimate'), `status_new_estimate:${data.gmailMessageId}`),
+            Markup.button.callback(t(lang, 'ignore'), `status_ignore:${data.gmailMessageId}`),
+          ],
+        ])
+      );
+      return;
+    }
+
+    if (data.multipleMatches && data.multipleMatches.length > 1) {
+      const message = formatMultipleMatches(lang, {
+        company: data.contact.company || '',
+        matches: data.multipleMatches.map(m => ({
+          jobId: m.job.id,
+          description: m.job.description,
+          date: new Date(m.job.created_at).toLocaleDateString(),
+        })),
+      });
+
+      const buttons = data.multipleMatches.map((m, i) =>
+        [Markup.button.callback(`${i + 1} ${t(lang, 'select')}`, `status_select:${m.job.id}:${data.gmailMessageId}`)]
+      );
+
+      await bot.telegram.sendMessage(
+        env.TELEGRAM_ADMIN_CHAT_ID,
+        message,
+        Markup.inlineKeyboard(buttons)
+      );
+      return;
+    }
+
+    if (data.matchedJob && data.draftResponse) {
+      const message = formatStatusInquiry(lang, {
+        company: data.contact.company || '',
+        from: data.contact.name,
+        subject: data.subject,
+        jobId: data.matchedJob.job.id,
+        stage: data.matchedJob.job.stage,
+        eta: data.matchedJob.job.eta,
+        draftResponse: data.draftResponse,
+      });
+
+      const callbackData = `${data.matchedJob.job.id}:${data.gmailMessageId}`;
+
+      await bot.telegram.sendMessage(
+        env.TELEGRAM_ADMIN_CHAT_ID,
+        message,
+        Markup.inlineKeyboard([
+          [
+            Markup.button.callback(t(lang, 'send'), `status_send:${callbackData}`),
+            Markup.button.callback(t(lang, 'edit'), `status_edit:${callbackData}`),
+            Markup.button.callback(t(lang, 'ignore'), `status_ignore:${data.gmailMessageId}`),
+          ],
+        ])
+      );
+      return;
+    }
+
+    // Edge case: matchedJob exists but no draft response
+    if (data.matchedJob) {
+      console.warn('Status inquiry notification called with matchedJob but no draftResponse');
+    }
+  } catch (error) {
+    console.error('Failed to send status inquiry notification:', error);
+    throw error;
+  }
 }
