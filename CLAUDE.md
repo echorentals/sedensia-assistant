@@ -94,6 +94,7 @@ npm test -- path/to/test.ts
 ### QuickBooks OAuth
 - Tokens stored in database, auto-refresh on expiry
 - Estimate creation, estimate-to-invoice conversion, PDF download
+- Auth docs: https://developer.intuit.com/app/developer/qbo/docs/develop/authentication-and-authorization/oauth-openid-discovery-doc
 
 ## Database Tables
 
