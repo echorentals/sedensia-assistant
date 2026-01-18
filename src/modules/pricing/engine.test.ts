@@ -7,9 +7,9 @@ const mockFindSignTypeByName = vi.fn<() => Promise<SignType | null>>();
 const mockFindMaterialByName = vi.fn<() => Promise<Material | null>>();
 
 vi.mock('../../db/index.js', () => ({
-  getPricingSuggestion: (...args: unknown[]) => mockGetPricingSuggestion(...args),
-  findSignTypeByName: (...args: unknown[]) => mockFindSignTypeByName(...args),
-  findMaterialByName: (...args: unknown[]) => mockFindMaterialByName(...args),
+  getPricingSuggestion: (...args: unknown[]) => mockGetPricingSuggestion(),
+  findSignTypeByName: (...args: unknown[]) => mockFindSignTypeByName(),
+  findMaterialByName: (...args: unknown[]) => mockFindMaterialByName(),
 }));
 
 describe('pricing engine', () => {

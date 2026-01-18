@@ -4,7 +4,7 @@ import { env } from './config/index.js';
 import { webhookRoutes } from './routes/webhooks.js';
 import { authRoutes } from './routes/auth.js';
 import { setupRoutes } from './routes/setup.js';
-import { bot } from './modules/telegram/index.js';
+import { bot, setupCallbackHandlers, setupOutcomeCommands } from './modules/telegram/index.js';
 
 async function main() {
   const fastify = Fastify({
@@ -30,15 +30,9 @@ async function main() {
     ctx.reply('✅ Bot is online and monitoring for estimate requests.');
   });
 
-  // Handle callback queries (for future phases)
-  bot.on('callback_query', async (ctx) => {
-    const callbackQuery = ctx.callbackQuery;
-    if ('data' in callbackQuery && callbackQuery.data?.startsWith('create_estimate:')) {
-      const messageId = callbackQuery.data.replace('create_estimate:', '');
-      await ctx.answerCbQuery('Estimate creation will be available in Phase 2');
-      await ctx.reply(`📋 Estimate creation for message ${messageId} - Coming in Phase 2!`);
-    }
-  });
+  // Setup callback handlers for estimate approval workflow
+  setupCallbackHandlers();
+  setupOutcomeCommands();
 
   // Start Telegram bot (polling for development)
   if (env.NODE_ENV === 'development') {
