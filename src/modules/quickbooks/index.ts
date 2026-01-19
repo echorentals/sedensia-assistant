@@ -7,6 +7,7 @@ export {
   createEstimate,
   getEstimates,
   getEstimate,
+  getEstimatePdf,
   getCustomers,
   findCustomerByName,
   type QBEstimate,

@@ -176,3 +176,56 @@ Keep it concise (3-4 short paragraphs). Do not include subject line or signature
 
   return textContent.text.trim();
 }
+
+export interface EstimateEmailInput {
+  contactName: string;
+  companyName: string;
+  itemsSummary: string;
+  estimateNumber: string;
+  estimateTotal: number;
+  turnaroundDays: number;
+  language: 'ko' | 'en';
+}
+
+export async function draftEstimateEmail(input: EstimateEmailInput): Promise<string> {
+  const languageInstructions =
+    input.language === 'ko'
+      ? '한국어로 작성해주세요. 정중하고 비즈니스적인 톤을 유지하세요.'
+      : 'Write in English. Maintain a professional and courteous tone.';
+
+  const response = await getAnthropicClient().messages.create({
+    model: 'claude-sonnet-4-5-20250929',
+    max_tokens: 500,
+    messages: [
+      {
+        role: 'user',
+        content: `You are drafting an estimate email for a sign fabrication company.
+
+${languageInstructions}
+
+Details:
+- Customer name: ${input.contactName}
+- Company: ${input.companyName}
+- Items: ${input.itemsSummary}
+- Estimate number: ${input.estimateNumber}
+- Total amount: $${input.estimateTotal.toLocaleString()}
+- Turnaround time: ${input.turnaroundDays} days
+
+Write a brief, professional email that:
+1. Thanks them for their inquiry
+2. References the attached estimate PDF
+3. Mentions the turnaround time
+4. Invites them to reach out with questions or to approve
+
+Keep it concise (3-4 short paragraphs). Do not include subject line or signature - just the body text.`,
+      },
+    ],
+  });
+
+  const textContent = response.content.find((c) => c.type === 'text');
+  if (!textContent || textContent.type !== 'text') {
+    throw new Error('No text response from AI');
+  }
+
+  return textContent.text.trim();
+}

@@ -27,9 +27,12 @@ import {
 import {
   createEstimate as createQBEstimate,
   findCustomerByName,
+  getEstimatePdf,
 } from '../quickbooks/index.js';
 import { getMessage, extractEmailContent, replyToThread, getMessageThreadId } from '../gmail/index.js';
 import { handleJobCompletion } from '../invoicing/index.js';
+import { draftEstimateEmail } from '../ai/index.js';
+import { env } from '../../config/index.js';
 
 // Store for edit sessions
 const editSessions = new Map<string, {
@@ -79,6 +82,33 @@ function clearCompletionData(jobId: string): void {
 
 // Track users editing completion emails
 const editingCompletionEmail = new Map<string, string>(); // telegramUserId -> jobId
+
+// Estimate email data storage
+interface EstimateEmailData {
+  draftEmail: string;
+  pdfBuffer: Buffer;
+  contactEmail: string;
+  gmailMessageId: string;
+  estimateNumber: string;
+  subject: string;
+}
+
+const estimateEmailStore = new Map<string, EstimateEmailData>();
+
+function storeEstimateEmailData(estimateId: string, data: EstimateEmailData): void {
+  estimateEmailStore.set(estimateId, data);
+}
+
+function getEstimateEmailData(estimateId: string): EstimateEmailData | undefined {
+  return estimateEmailStore.get(estimateId);
+}
+
+function clearEstimateEmailData(estimateId: string): void {
+  estimateEmailStore.delete(estimateId);
+}
+
+// Track users editing estimate emails
+const editingEstimateEmail = new Map<string, string>(); // telegramUserId -> estimateId
 
 export function setupCallbackHandlers(): void {
   // Approve estimate
@@ -140,8 +170,85 @@ export function setupCallbackHandlers(): void {
         }
       }
 
+      // Get PDF from QuickBooks
+      const pdfBuffer = await getEstimatePdf(qbEstimate.Id!);
+      if (!pdfBuffer) {
+        await ctx.editMessageText(
+          `✅ Estimate #${qbEstimate.DocNumber} created in QuickBooks!\n\n⚠️ Could not download PDF. Please send manually.\n\nTotal: $${estimate.total_amount?.toLocaleString()}`
+        );
+        return;
+      }
+
+      // Get original email details
+      if (!estimate.gmail_message_id) {
+        await ctx.editMessageText(
+          `✅ Estimate #${qbEstimate.DocNumber} created in QuickBooks!\n\n⚠️ No original email to reply to.\n\nTotal: $${estimate.total_amount?.toLocaleString()}`
+        );
+        return;
+      }
+
+      const originalMessage = await getMessage(estimate.gmail_message_id);
+      if (!originalMessage) {
+        await ctx.editMessageText(
+          `✅ Estimate #${qbEstimate.DocNumber} created in QuickBooks!\n\n⚠️ Could not fetch original email.\n\nTotal: $${estimate.total_amount?.toLocaleString()}`
+        );
+        return;
+      }
+
+      const { from, subject } = extractEmailContent(originalMessage);
+
+      // Extract email address
+      const bracketMatch = from.match(/<([^>]+)>/);
+      const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
+      const contactEmail = bracketMatch?.[1] || from.match(emailRegex)?.[0];
+
+      if (!contactEmail) {
+        await ctx.editMessageText(
+          `✅ Estimate #${qbEstimate.DocNumber} created in QuickBooks!\n\n⚠️ Could not determine recipient email.\n\nTotal: $${estimate.total_amount?.toLocaleString()}`
+        );
+        return;
+      }
+
+      // Draft the estimate email
+      const itemsSummary = estimate.items
+        .map(item => `${item.description} (x${item.quantity})`)
+        .join(', ');
+
+      const draftEmail = await draftEstimateEmail({
+        contactName: contact?.name || 'Customer',
+        companyName: contact?.company || '',
+        itemsSummary,
+        estimateNumber: qbEstimate.DocNumber || estimateId.slice(0, 8),
+        estimateTotal: estimate.total_amount || 0,
+        turnaroundDays: estimate.turnaround_days,
+        language: 'en', // TODO: Detect from original email or user preference
+      });
+
+      // Store data for review
+      storeEstimateEmailData(estimateId, {
+        draftEmail,
+        pdfBuffer,
+        contactEmail,
+        gmailMessageId: estimate.gmail_message_id,
+        estimateNumber: qbEstimate.DocNumber || '',
+        subject,
+      });
+
+      // Show review notification
       await ctx.editMessageText(
-        `✅ Estimate #${qbEstimate.DocNumber} created in QuickBooks!\n\nTotal: $${estimate.total_amount?.toLocaleString()}\n\nUse /won ${estimateId.slice(0, 8)} or /lost ${estimateId.slice(0, 8)} to track outcome.`
+        `✅ Estimate #${qbEstimate.DocNumber} created!\n\n` +
+        `📧 Ready to send to: ${contactEmail}\n\n` +
+        `📝 Draft:\n"${draftEmail.slice(0, 150)}${draftEmail.length > 150 ? '...' : ''}"\n\n` +
+        `📎 Attachment: ${qbEstimate.DocNumber}.pdf`,
+        Markup.inlineKeyboard([
+          [
+            Markup.button.callback('📤 Send', `estimate_send:${estimateId}`),
+            Markup.button.callback('✏️ Edit', `estimate_edit:${estimateId}`),
+          ],
+          [
+            Markup.button.callback('⏭️ Skip', `estimate_skip:${estimateId}`),
+          ],
+        ])
       );
     } catch (error) {
       console.error('Failed to create QuickBooks estimate:', error);
@@ -305,6 +412,93 @@ export function setupCallbackHandlers(): void {
     await ctx.editMessageText('❌ Estimate rejected and archived.');
   });
 
+  // Send estimate email with PDF
+  bot.action(/^estimate_send:(.+)$/, async (ctx) => {
+    const estimateId = ctx.match[1];
+    const data = getEstimateEmailData(estimateId);
+
+    if (!data) {
+      await ctx.answerCbQuery('Estimate data expired. Please approve again.');
+      return;
+    }
+
+    await ctx.answerCbQuery('Sending...');
+
+    try {
+      const originalMessage = await getMessage(data.gmailMessageId);
+      const threadId = originalMessage?.threadId;
+
+      if (!threadId) {
+        await ctx.editMessageText('❌ Could not find email thread.');
+        clearEstimateEmailData(estimateId);
+        return;
+      }
+
+      const replySubject = data.subject.startsWith('Re:') ? data.subject : `Re: ${data.subject}`;
+
+      const sentId = await replyToThread({
+        threadId,
+        messageId: data.gmailMessageId,
+        to: data.contactEmail,
+        subject: replySubject,
+        body: data.draftEmail,
+        attachments: [{
+          filename: `${data.estimateNumber || 'Estimate'}.pdf`,
+          mimeType: 'application/pdf',
+          data: data.pdfBuffer,
+        }],
+      });
+
+      if (sentId) {
+        await ctx.editMessageText(
+          `✅ Estimate sent to ${data.contactEmail}\n\n` +
+          `📎 ${data.estimateNumber}.pdf attached\n\n` +
+          `Use /won ${estimateId.slice(0, 8)} or /lost ${estimateId.slice(0, 8)} to track outcome.`
+        );
+      } else {
+        await ctx.editMessageText('❌ Failed to send email. Please try again or send manually.');
+      }
+    } catch (error) {
+      console.error('Failed to send estimate email:', error);
+      await ctx.editMessageText(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      clearEstimateEmailData(estimateId);
+    }
+  });
+
+  // Edit estimate email
+  bot.action(/^estimate_edit:(.+)$/, async (ctx) => {
+    const estimateId = ctx.match[1];
+    const data = getEstimateEmailData(estimateId);
+
+    if (!data) {
+      await ctx.answerCbQuery('Estimate data expired');
+      return;
+    }
+
+    await ctx.answerCbQuery();
+
+    await ctx.editMessageText(
+      `📝 Current draft:\n\n${data.draftEmail}\n\n➡️ Reply with your edited version:`
+    );
+
+    // Store that we're expecting an edit for this estimate
+    editingEstimateEmail.set(ctx.from?.id.toString() || '', estimateId);
+  });
+
+  // Skip sending estimate email
+  bot.action(/^estimate_skip:(.+)$/, async (ctx) => {
+    const estimateId = ctx.match[1];
+    await ctx.answerCbQuery('Skipped');
+
+    clearEstimateEmailData(estimateId);
+
+    await ctx.editMessageText(
+      `✅ Estimate created (email skipped)\n\n` +
+      `Use /won ${estimateId.slice(0, 8)} or /lost ${estimateId.slice(0, 8)} to track outcome.`
+    );
+  });
+
   // Status inquiry callbacks
   bot.action(/^status_send:(.+):(.+)$/, async (ctx) => {
     const jobId = ctx.match[1];
@@ -451,6 +645,39 @@ export function setupCallbackHandlers(): void {
   // Handle text replies for editing
   bot.on('text', async (ctx) => {
     const userId = ctx.from?.id.toString() || '';
+
+    // Handle estimate email editing
+    const estimateEmailId = editingEstimateEmail.get(userId);
+    if (estimateEmailId) {
+      const data = getEstimateEmailData(estimateEmailId);
+      if (data) {
+        const editedEmail = ctx.message.text;
+        // Update the stored estimate data with edited email
+        storeEstimateEmailData(estimateEmailId, {
+          ...data,
+          draftEmail: editedEmail,
+        });
+
+        editingEstimateEmail.delete(userId);
+
+        await ctx.reply(
+          `✅ Draft updated.\n\n"${editedEmail.slice(0, 100)}${editedEmail.length > 100 ? '...' : ''}"`,
+          Markup.inlineKeyboard([
+            [
+              Markup.button.callback('📤 Send', `estimate_send:${estimateEmailId}`),
+              Markup.button.callback('✏️ Edit Again', `estimate_edit:${estimateEmailId}`),
+            ],
+            [
+              Markup.button.callback('⏭️ Skip', `estimate_skip:${estimateEmailId}`),
+            ],
+          ])
+        );
+      } else {
+        editingEstimateEmail.delete(userId);
+        await ctx.reply('❌ Estimate data expired. Please approve again.');
+      }
+      return;
+    }
 
     // Handle completion email editing
     const completionJobId = editingCompletionEmail.get(userId);

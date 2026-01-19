@@ -307,3 +307,31 @@ export async function getInvoicePdf(invoiceId: string): Promise<Buffer | null> {
     return null;
   }
 }
+
+export async function getEstimatePdf(estimateId: string): Promise<Buffer | null> {
+  const client = await getQuickBooksClient();
+  if (!client) return null;
+
+  try {
+    const response = await fetch(
+      `${client.baseUrl}/estimate/${estimateId}/pdf`,
+      {
+        headers: {
+          'Accept': 'application/pdf',
+          'Authorization': `Bearer ${client.tokens.accessToken}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      console.error('Failed to get estimate PDF:', response.status);
+      return null;
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  } catch (error) {
+    console.error('Failed to get estimate PDF:', error);
+    return null;
+  }
+}
