@@ -281,6 +281,20 @@ export interface ReplyOptions {
   }>;
 }
 
+/**
+ * Encode a string for use in email headers (RFC 2047).
+ * Only encodes if the string contains non-ASCII characters.
+ */
+function encodeHeaderValue(value: string): string {
+  // Check if string contains non-ASCII characters
+  if (!/[^\x00-\x7F]/.test(value)) {
+    return value;
+  }
+  // Encode using UTF-8 Base64 format: =?UTF-8?B?base64_encoded?=
+  const encoded = Buffer.from(value, 'utf-8').toString('base64');
+  return `=?UTF-8?B?${encoded}?=`;
+}
+
 function createMimeMessage(options: ReplyOptions): string {
   const boundary = `boundary_${Date.now()}`;
   const hasAttachments = options.attachments && options.attachments.length > 0;
@@ -289,7 +303,7 @@ function createMimeMessage(options: ReplyOptions): string {
   message += `MIME-Version: 1.0\r\n`;
   message += `From: me\r\n`;
   message += `To: ${options.to}\r\n`;
-  message += `Subject: ${options.subject}\r\n`;
+  message += `Subject: ${encodeHeaderValue(options.subject)}\r\n`;
   message += `In-Reply-To: ${options.messageId}\r\n`;
   message += `References: ${options.messageId}\r\n`;
 
