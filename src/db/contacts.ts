@@ -52,3 +52,17 @@ export async function getAllActiveContacts(): Promise<Contact[]> {
 
   return data as Contact[];
 }
+
+export async function getContactById(id: string): Promise<Contact | null> {
+  const { data, error } = await supabase
+    .from('contacts')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error || !data) {
+    return null;
+  }
+
+  return data as Contact;
+}

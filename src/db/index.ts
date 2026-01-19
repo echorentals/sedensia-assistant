@@ -1,5 +1,5 @@
 export { supabase } from './client.js';
-export { findContactByEmail, getAllActiveContacts } from './contacts.js';
+export { findContactByEmail, getAllActiveContacts, getContactById } from './contacts.js';
 export type { Contact } from './contacts.js';
 export {
   createEstimate,
