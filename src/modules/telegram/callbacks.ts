@@ -1,5 +1,5 @@
 import { Markup } from 'telegraf';
-import { bot } from './bot.js';
+import { bot, sendCompletionNotification } from './bot.js';
 import {
   getEstimateById,
   updateEstimateStatus,
@@ -17,12 +17,15 @@ import {
   getTelegramUser,
   upsertTelegramUser,
   setUserLanguage,
+  updateInvoiceSent,
+  getInvoiceByJobId,
 } from '../../db/index.js';
 import {
   createEstimate as createQBEstimate,
   findCustomerByName,
 } from '../quickbooks/index.js';
-import { getMessage, extractEmailContent, replyToThread } from '../gmail/index.js';
+import { getMessage, extractEmailContent, replyToThread, getMessageThreadId } from '../gmail/index.js';
+import { handleJobCompletion } from '../invoicing/index.js';
 
 // Store for edit sessions
 const editSessions = new Map<string, {
@@ -46,6 +49,32 @@ export function storeDraftResponse(gmailMessageId: string, draft: string): void 
 export function getDraftResponse(gmailMessageId: string): string | undefined {
   return draftResponses.get(gmailMessageId);
 }
+
+// Completion data storage for invoicing flow
+interface CompletionData {
+  draftEmail: string;
+  pdfBuffer: Buffer;
+  contactEmail: string;
+  gmailMessageId?: string;
+  invoiceNumber: string;
+}
+
+const completionDataStore = new Map<string, CompletionData>();
+
+function storeCompletionData(jobId: string, data: CompletionData): void {
+  completionDataStore.set(jobId, data);
+}
+
+function getCompletionData(jobId: string): CompletionData | undefined {
+  return completionDataStore.get(jobId);
+}
+
+function clearCompletionData(jobId: string): void {
+  completionDataStore.delete(jobId);
+}
+
+// Track users editing completion emails
+const editingCompletionEmail = new Map<string, string>(); // telegramUserId -> jobId
 
 export function setupCallbackHandlers(): void {
   // Approve estimate
@@ -336,6 +365,40 @@ export function setupCallbackHandlers(): void {
   // Handle text replies for editing
   bot.on('text', async (ctx) => {
     const userId = ctx.from?.id.toString() || '';
+
+    // Handle completion email editing
+    const completionJobId = editingCompletionEmail.get(userId);
+    if (completionJobId) {
+      const data = getCompletionData(completionJobId);
+      if (data) {
+        const editedEmail = ctx.message.text;
+        // Update the stored completion data with edited email
+        storeCompletionData(completionJobId, {
+          ...data,
+          draftEmail: editedEmail,
+        });
+
+        editingCompletionEmail.delete(userId);
+
+        await ctx.reply(
+          `✅ Draft updated.\n\n"${editedEmail.slice(0, 100)}${editedEmail.length > 100 ? '...' : ''}"`,
+          Markup.inlineKeyboard([
+            [
+              Markup.button.callback('Send', `complete_send:${completionJobId}`),
+              Markup.button.callback('Edit Again', `complete_edit:${completionJobId}`),
+            ],
+            [
+              Markup.button.callback('Skip', `complete_skip:${completionJobId}`),
+            ],
+          ])
+        );
+      } else {
+        editingCompletionEmail.delete(userId);
+        await ctx.reply('❌ Completion data expired. Please run /stage again.');
+      }
+      return;
+    }
+
     const session = editSessions.get(userId);
 
     if (!session) {
@@ -548,6 +611,35 @@ export function setupOutcomeCommands(): void {
     const success = await updateJobStage(job.id, stage as 'pending' | 'in_production' | 'ready' | 'installed' | 'completed');
     if (success) {
       await ctx.reply(`✅ Job ${job.id.slice(0, 8)} updated to: ${stage}`);
+
+      // Trigger invoicing flow when completed
+      if (stage === 'completed') {
+        await ctx.reply('Processing invoice...');
+        const result = await handleJobCompletion(job.id);
+
+        if (result.success && result.job && result.invoiceNumber && result.draftEmail) {
+          // Store completion data for callbacks
+          storeCompletionData(job.id, {
+            draftEmail: result.draftEmail,
+            pdfBuffer: result.pdfBuffer!,
+            contactEmail: result.contactEmail!,
+            gmailMessageId: result.gmailMessageId,
+            invoiceNumber: result.invoiceNumber,
+          });
+
+          await sendCompletionNotification({
+            telegramUserId: ctx.from?.id.toString(),
+            job: { id: job.id, description: job.description },
+            invoiceNumber: result.invoiceNumber,
+            invoiceTotal: result.invoice?.total || 0,
+            draftEmail: result.draftEmail,
+            contactName: result.contactEmail?.split('@')[0] || 'Customer',
+            companyName: 'Samsung', // TODO: Get from contact
+          });
+        } else {
+          await ctx.reply(`⚠️ Invoice creation failed: ${result.error}`);
+        }
+      }
     } else {
       await ctx.reply(`❌ Failed to update job stage.`);
     }
@@ -579,6 +671,92 @@ export function setupOutcomeCommands(): void {
     } else {
       await ctx.reply(`❌ Failed to update job ETA.`);
     }
+  });
+
+  // Complete and send email with invoice
+  bot.action(/^complete_send:(.+)$/, async (ctx) => {
+    const jobId = ctx.match[1];
+    const data = getCompletionData(jobId);
+
+    if (!data) {
+      await ctx.answerCbQuery('Completion data expired. Please run /stage again.');
+      return;
+    }
+
+    try {
+      // Get thread info
+      let threadId: string | null = null;
+      if (data.gmailMessageId) {
+        threadId = await getMessageThreadId(data.gmailMessageId);
+      }
+
+      if (threadId && data.gmailMessageId) {
+        // Send email with PDF attachment
+        const sentId = await replyToThread({
+          threadId,
+          messageId: data.gmailMessageId,
+          to: data.contactEmail,
+          subject: `Re: Job Complete - Invoice ${data.invoiceNumber}`,
+          body: data.draftEmail,
+          attachments: [{
+            filename: `${data.invoiceNumber}.pdf`,
+            mimeType: 'application/pdf',
+            data: data.pdfBuffer,
+          }],
+        });
+
+        if (sentId) {
+          // Update invoice as sent
+          const invoice = await getInvoiceByJobId(jobId);
+          if (invoice) {
+            await updateInvoiceSent(invoice.id);
+          }
+
+          // Update job to invoiced
+          await updateJobStage(jobId, 'invoiced');
+
+          await ctx.editMessageText(`✅ Completion email sent with invoice ${data.invoiceNumber}`);
+        } else {
+          await ctx.answerCbQuery('Failed to send email');
+        }
+      } else {
+        await ctx.answerCbQuery('No email thread found for reply');
+      }
+    } catch (error) {
+      console.error('Complete send failed:', error);
+      await ctx.answerCbQuery('Failed to send email');
+    } finally {
+      clearCompletionData(jobId);
+    }
+  });
+
+  // Edit completion email
+  bot.action(/^complete_edit:(.+)$/, async (ctx) => {
+    const jobId = ctx.match[1];
+    const data = getCompletionData(jobId);
+
+    if (!data) {
+      await ctx.answerCbQuery('Completion data expired');
+      return;
+    }
+
+    await ctx.editMessageText(
+      `📝 Current draft:\n\n${data.draftEmail}\n\n➡️ Reply with your edited version:`
+    );
+
+    // Store that we're expecting an edit for this job
+    editingCompletionEmail.set(ctx.from?.id.toString() || '', jobId);
+    await ctx.answerCbQuery();
+  });
+
+  // Skip sending email, just mark as invoiced
+  bot.action(/^complete_skip:(.+)$/, async (ctx) => {
+    const jobId = ctx.match[1];
+
+    await updateJobStage(jobId, 'invoiced');
+    clearCompletionData(jobId);
+
+    await ctx.editMessageText(`✅ Job marked as invoiced (email skipped)`);
   });
 
   // Language preference command
