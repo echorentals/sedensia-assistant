@@ -29,17 +29,23 @@ export async function getGmailTokens(): Promise<GmailTokens | null> {
 }
 
 export async function saveGmailTokens(tokens: GmailTokens): Promise<void> {
+  // Delete existing Gmail tokens first (upsert doesn't work with NULL realm_id)
+  await supabase
+    .from('oauth_tokens')
+    .delete()
+    .eq('provider', 'gmail')
+    .is('realm_id', null);
+
+  // Insert fresh token
   const { error } = await supabase
     .from('oauth_tokens')
-    .upsert({
+    .insert({
       provider: 'gmail',
       access_token: encrypt(tokens.accessToken),
       refresh_token: encrypt(tokens.refreshToken),
       expires_at: tokens.expiresAt.toISOString(),
       scope: tokens.scope,
       updated_at: new Date().toISOString(),
-    }, {
-      onConflict: 'provider,realm_id',
     });
 
   if (error) {
