@@ -105,12 +105,14 @@ export async function createEstimate(input: CreateEstimateInput): Promise<QBEsti
       ItemRef: { value: serviceItem.Id },
       Qty: line.quantity,
       UnitPrice: line.unitPrice,
+      TaxCodeRef: { value: 'TAX' }, // Mark line item as taxable
     },
   }));
 
   const estimate = {
     CustomerRef: { value: input.customerId },
     Line: lines,
+    GlobalTaxCalculation: 'TaxExcluded', // Calculate tax on top of line amounts
   };
 
   console.log('Creating estimate:', JSON.stringify(estimate, null, 2));
