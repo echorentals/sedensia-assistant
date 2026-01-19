@@ -1,7 +1,7 @@
 # Sedensia Business Assistant - Design Document
 
 **Date:** 2026-01-18
-**Status:** Approved
+**Status:** Implemented ✅
 **Author:** Patrick Jeong + Claude
 
 ## Overview
@@ -260,15 +260,15 @@ OAuth callback updates tokens in database, sends confirmation:
 ```
 
 ### Phase 1 OAuth Tasks
-- [ ] Create `oauth_tokens` table with encryption
-- [ ] Implement Gmail token refresh wrapper
-- [ ] Add Telegram alert for auth failures
-- [ ] Create `/auth/gmail/authorize` and callback endpoints
+- [x] Create `oauth_tokens` table with encryption
+- [x] Implement Gmail token refresh wrapper
+- [x] Add Telegram alert for auth failures
+- [x] Create `/auth/gmail/authorize` and callback endpoints
 
 ### Phase 2 OAuth Tasks
-- [ ] Implement QuickBooks token refresh wrapper
-- [ ] Create `/auth/quickbooks/authorize` and callback endpoints
-- [ ] Add proactive token refresh background job
+- [x] Implement QuickBooks token refresh wrapper
+- [x] Create `/auth/quickbooks/authorize` and callback endpoints
+- [x] Add proactive token refresh background job
 
 ## Phase 1: Email Monitoring & Telegram Notifications
 
@@ -334,12 +334,12 @@ Special Requests:
 ```
 
 ### Implementation Tasks
-- [ ] Project setup (TypeScript, Fastify, environment config)
-- [ ] Supabase schema: `contacts` table
-- [ ] Gmail API OAuth setup + Pub/Sub webhook
-- [ ] Telegram bot basic setup
-- [ ] Claude integration for email parsing
-- [ ] End-to-end: email received → parsed → Telegram notification
+- [x] Project setup (TypeScript, Fastify, environment config)
+- [x] Supabase schema: `contacts` table
+- [x] Gmail API OAuth setup + Pub/Sub webhook
+- [x] Telegram bot basic setup
+- [x] Claude integration for email parsing
+- [x] End-to-end: email received → parsed → Telegram notification
 
 ## Phase 2: Estimate Workflow
 
@@ -409,12 +409,12 @@ Pricing notes:
 ```
 
 ### Implementation Tasks
-- [ ] Supabase schema: `jobs`, `job_items`, `estimates`, `pricing_history`
-- [ ] QuickBooks OAuth setup
-- [ ] Pricing recommendation engine
-- [ ] Turnaround calculator
-- [ ] Telegram inline buttons for approval
-- [ ] Estimate creation → approval → send flow
+- [x] Supabase schema: `jobs`, `job_items`, `estimates`, `pricing_history`
+- [x] QuickBooks OAuth setup
+- [x] Pricing recommendation engine
+- [x] Turnaround calculator
+- [x] Telegram inline buttons for approval
+- [x] Estimate creation → approval → send flow
 
 ## Phase 3: Dashboard & Admin Interface ✓
 
@@ -660,10 +660,12 @@ Email: "지난달 안내 표지판 동일하게 추가 주문 가능할까요?"
 **Email Processor:**
 - [x] Route emails by intent to appropriate flow
 
-## Phase 5: Invoicing & Job Completion
+## Phase 5: Invoicing & Job Completion ✓
 
 ### Goal
 Convert estimates to invoices, send completion emails, track payment.
+
+### Status: COMPLETE
 
 ### Completion Flow
 
@@ -748,11 +750,13 @@ Thread: Re: Channel Letters for Taylor Facility
 ```
 
 ### Implementation Tasks
-- [ ] Estimate → Invoice conversion in QuickBooks
-- [ ] PDF download and storage
-- [ ] Completion email composer (AI)
-- [ ] Gmail thread reply with attachment
-- [ ] Payment tracking (`/paid <job_id>`)
+- [x] Estimate → Invoice conversion in QuickBooks
+- [x] PDF download from QuickBooks (on-demand, not stored)
+- [x] Completion email composer (AI)
+- [x] Gmail thread reply with PDF attachment
+- [x] Payment tracking (`/paid <job_id>`)
+- [x] Telegram completion notification with [Send] [Edit] [Skip] buttons
+- [x] Job stages extended: `completed` → `invoiced` → `paid`
 
 ## External Service Setup Requirements
 
@@ -843,10 +847,12 @@ ANTHROPIC_API_KEY=xxx
 - Language detection works (Korean email → Korean response) ✓
 - Telegram messages respect user language preference (`/lang` command) ✓
 
-### Phase 5 Complete When:
-- [Mark Delivered] converts estimate to invoice
-- Completion email replies to original thread with PDF attached
-- [Mark Paid] updates job status
+### Phase 5 Complete When: ✓
+- `/stage <id> completed` triggers invoice creation ✓
+- Completion email drafted in correct language ✓
+- Telegram shows review with [Send] [Edit] [Skip] buttons ✓
+- [Send] replies to original Gmail thread with PDF attached ✓
+- `/paid <id>` updates job and invoice records ✓
 
 ## Future Considerations (Out of Scope)
 
