@@ -54,7 +54,9 @@ Extract the following information from the email and any attached images:
    - Sign types visible in photos or drawings
    - Any text, measurements, or specifications visible
 
-Common sign types: Channel Letters, Monument Sign, Pylon Sign, Wall Sign, Wayfinding Sign, ADA Sign, Vinyl Graphics, Vehicle Wrap, Banner, A-Frame
+IMPORTANT: When images contain dimensions or specifications, these MUST be reflected in the items array. Image-derived dimensions take priority over any assumptions. For example, if an image shows "6ft x 2.25ft", the item size should be "72" x 27"" or "6ft x 2.25ft", not a default size.
+
+Common sign types: Channel Letters, Monument Sign, Pylon Sign, Wall Sign, Wayfinding Sign, ADA Sign, Vinyl Graphics, Vehicle Wrap, Banner, A-Frame, Standing Sign, Freestanding Sign
 
 Common materials: Aluminum, Acrylic, Dibond, PVC, Coroplast, HDU, Stainless Steel, Bronze
 
