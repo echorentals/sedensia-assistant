@@ -18,6 +18,7 @@ import {
   upsertTelegramUser,
   setUserLanguage,
   updateInvoiceSent,
+  updateInvoicePaid,
   getInvoiceByJobId,
 } from '../../db/index.js';
 import {
@@ -801,6 +802,52 @@ export function setupOutcomeCommands(): void {
       await ctx.reply(message);
     } else {
       await ctx.reply('Failed to update language preference.');
+    }
+  });
+
+  // Mark job as paid
+  bot.command('paid', async (ctx) => {
+    const args = ctx.message.text.split(' ');
+    if (args.length < 2) {
+      await ctx.reply('Usage: /paid <job_id>');
+      return;
+    }
+
+    const job = await findJobByPrefix(args[1]);
+    if (!job) {
+      await ctx.reply(`❌ No job found starting with "${args[1]}"`);
+      return;
+    }
+
+    // Check if job is invoiced
+    if (job.stage !== 'invoiced') {
+      if (job.stage === 'paid') {
+        const invoice = await getInvoiceByJobId(job.id);
+        const paidDate = invoice?.paid_at
+          ? new Date(invoice.paid_at).toLocaleDateString()
+          : 'unknown date';
+        await ctx.reply(`ℹ️ Job already marked as paid on ${paidDate}`);
+        return;
+      }
+      await ctx.reply(`❌ Job must be invoiced before marking paid. Current stage: ${job.stage}`);
+      return;
+    }
+
+    // Get invoice and mark as paid
+    const invoice = await getInvoiceByJobId(job.id);
+    if (invoice) {
+      await updateInvoicePaid(invoice.id);
+    }
+
+    // Update job stage
+    const success = await updateJobStage(job.id, 'paid');
+    if (success) {
+      await ctx.reply(`✅ Job #${job.id.slice(0, 8)} marked as paid
+
+Invoice: ${invoice?.quickbooks_doc_number || 'N/A'}
+Amount: $${invoice?.total?.toLocaleString() || job.total_amount?.toLocaleString() || 'N/A'}`);
+    } else {
+      await ctx.reply(`❌ Failed to update job stage`);
     }
   });
 }
