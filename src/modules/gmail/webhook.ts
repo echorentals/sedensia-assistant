@@ -9,6 +9,33 @@ import { suggestPricesForEstimate } from '../pricing/index.js';
 import type { ItemInput } from '../pricing/index.js';
 import { handleStatusInquiry, handleReorder } from '../email/index.js';
 
+// Deduplication: track recently processed message IDs (TTL: 5 minutes)
+const processedMessages = new Map<string, number>();
+const DEDUP_TTL_MS = 5 * 60 * 1000;
+
+function isMessageProcessed(messageId: string): boolean {
+  const timestamp = processedMessages.get(messageId);
+  if (!timestamp) return false;
+  if (Date.now() - timestamp > DEDUP_TTL_MS) {
+    processedMessages.delete(messageId);
+    return false;
+  }
+  return true;
+}
+
+function markMessageProcessed(messageId: string): void {
+  processedMessages.set(messageId, Date.now());
+  // Clean up old entries periodically
+  if (processedMessages.size > 100) {
+    const now = Date.now();
+    for (const [id, ts] of processedMessages) {
+      if (now - ts > DEDUP_TTL_MS) {
+        processedMessages.delete(id);
+      }
+    }
+  }
+}
+
 export interface PubSubMessage {
   message: {
     data: string; // base64 encoded
@@ -60,6 +87,13 @@ export async function processEmailMessage(messageId: string): Promise<boolean> {
     console.error('Invalid messageId provided');
     return false;
   }
+
+  // Deduplication check
+  if (isMessageProcessed(messageId)) {
+    console.log('Skipping duplicate message:', messageId);
+    return false;
+  }
+  markMessageProcessed(messageId);
 
   console.log('Processing email message:', messageId);
 
