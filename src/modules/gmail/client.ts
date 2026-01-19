@@ -189,6 +189,85 @@ export function extractEmailContent(message: gmail_v1.Schema$Message): {
   return { from, subject, body };
 }
 
+// Supported image MIME types
+const IMAGE_MIME_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+  'image/bmp',
+];
+
+export interface EmailImage {
+  filename: string;
+  mimeType: string;
+  data: Buffer;
+}
+
+/**
+ * Extract image attachments from a Gmail message.
+ * Only extracts common image formats, ignores other file types.
+ */
+export async function extractEmailImages(message: gmail_v1.Schema$Message): Promise<EmailImage[]> {
+  const gmailClient = await getGmailClient();
+  if (!gmailClient || !message.id) return [];
+
+  const gmail = gmailClient; // Capture for use in nested function
+  const messageId = message.id;
+  const images: EmailImage[] = [];
+
+  async function processPartForImages(part: gmail_v1.Schema$MessagePart): Promise<void> {
+    const mimeType = part.mimeType || '';
+
+    // Check if this is an image
+    if (IMAGE_MIME_TYPES.includes(mimeType)) {
+      const filename = part.filename || `image_${Date.now()}`;
+
+      // Image data might be inline or need to be fetched via attachment ID
+      if (part.body?.data) {
+        // Inline image data
+        images.push({
+          filename,
+          mimeType,
+          data: Buffer.from(part.body.data, 'base64'),
+        });
+      } else if (part.body?.attachmentId) {
+        // Need to fetch attachment
+        try {
+          const attachment = await gmail.users.messages.attachments.get({
+            userId: 'me',
+            messageId: messageId,
+            id: part.body.attachmentId,
+          });
+
+          if (attachment.data.data) {
+            images.push({
+              filename,
+              mimeType,
+              data: Buffer.from(attachment.data.data, 'base64'),
+            });
+          }
+        } catch (error) {
+          console.error(`Failed to fetch attachment ${part.body.attachmentId}:`, error);
+        }
+      }
+    }
+
+    // Recursively process nested parts
+    if (part.parts) {
+      for (const subpart of part.parts) {
+        await processPartForImages(subpart);
+      }
+    }
+  }
+
+  if (message.payload) {
+    await processPartForImages(message.payload);
+  }
+
+  return images;
+}
+
 export interface ReplyOptions {
   threadId: string;
   messageId: string;

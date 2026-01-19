@@ -1,8 +1,9 @@
-import { getMessage, extractEmailContent } from './client.js';
+import { getMessage, extractEmailContent, extractEmailImages } from './client.js';
 import { getWatchState, getNewMessagesSinceHistoryId } from './watch.js';
 import { findContactByEmail, createEstimate } from '../../db/index.js';
 import type { EstimateItem } from '../../db/index.js';
 import { parseEstimateRequest } from '../ai/index.js';
+import type { ParseImage } from '../ai/index.js';
 import { sendNotification, sendSimpleMessage, sendPricedEstimateNotification, sendStatusInquiryNotification, sendReorderNotification, storeDraftResponse } from '../telegram/index.js';
 import type { EstimateRequestNotification } from '../telegram/index.js';
 import { suggestPricesForEstimate } from '../pricing/index.js';
@@ -117,9 +118,26 @@ export async function processEmailMessage(messageId: string): Promise<boolean> {
 
   console.log('Matched contact:', contact.name, contact.company);
 
-  // Parse the email with AI
-  const parsed = await parseEstimateRequest({ from, subject, body });
+  // Extract images from email
+  const emailImages = await extractEmailImages(message);
+  console.log('Found', emailImages.length, 'image attachments');
+
+  // Convert to ParseImage format
+  const images: ParseImage[] = emailImages.map(img => ({
+    mimeType: img.mimeType,
+    data: img.data,
+  }));
+
+  // Parse the email with AI (including images if present)
+  const parsed = await parseEstimateRequest({ from, subject, body, images: images.length > 0 ? images : undefined });
   console.log('Parsed intent:', parsed.intent);
+
+  // Notify if images had unclear details
+  if (parsed.hasImages && parsed.imageAnalysisNotes) {
+    await sendSimpleMessage(
+      `📎 Image analysis notes for email from ${contact.name}:\n\n${parsed.imageAnalysisNotes}\n\n⚠️ Some details may need manual verification.`
+    );
+  }
 
   // Route by intent
   switch (parsed.intent) {

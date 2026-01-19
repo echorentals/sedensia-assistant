@@ -26,13 +26,21 @@ export const ParsedEstimateRequestSchema = z.object({
   urgency: z.enum(['normal', 'urgent', 'rush']).nullish(),
   referencedJobDescription: z.string().nullish(),
   keywords: z.array(z.string()).default([]),
+  hasImages: z.boolean().default(false),
+  imageAnalysisNotes: z.string().nullish(),
 });
 
 export type ParsedEstimateRequest = z.infer<typeof ParsedEstimateRequestSchema>;
 
+// Image input for parsing
+export interface ParseImage {
+  mimeType: string;
+  data: Buffer;
+}
+
 const SYSTEM_PROMPT = `You are an AI assistant that parses estimate request emails for a sign fabrication company.
 
-Extract the following information from the email:
+Extract the following information from the email and any attached images:
 1. Intent: Is this a new estimate request, a status inquiry about an existing job, a reorder of previous signs, an approval of a quote, or a general message?
 2. Language: Detect the primary language of the email - "ko" for Korean, "en" for English
 3. Items: List each sign type requested with quantity, size, and material if mentioned
@@ -40,6 +48,11 @@ Extract the following information from the email:
 5. Urgency: normal, urgent, or rush based on language used
 6. Referenced Job: If this is a status inquiry or reorder, what job/sign are they referring to?
 7. Keywords: Extract key search terms that could identify a specific job (e.g., "channel letters", "Taylor facility", "wayfinding signs")
+8. Image Analysis: If images are provided, carefully examine them for:
+   - Sign dimensions (width x height)
+   - Quantities shown in diagrams or tables
+   - Sign types visible in photos or drawings
+   - Any text, measurements, or specifications visible
 
 Common sign types: Channel Letters, Monument Sign, Pylon Sign, Wall Sign, Wayfinding Sign, ADA Sign, Vinyl Graphics, Vehicle Wrap, Banner, A-Frame
 
@@ -53,8 +66,12 @@ Respond with valid JSON matching this schema:
   "specialRequests": string[],
   "urgency": "normal" | "urgent" | "rush" | null,
   "referencedJobDescription": string | null,
-  "keywords": string[]
-}`;
+  "keywords": string[],
+  "hasImages": boolean,
+  "imageAnalysisNotes": string | null
+}
+
+If images contain information you cannot clearly read or interpret, set imageAnalysisNotes to describe what you see and what details are unclear.`;
 
 /**
  * Extracts JSON from a response string, handling markdown code blocks.
@@ -68,22 +85,68 @@ export function extractJsonFromResponse(text: string): string {
   return text.trim();
 }
 
+// Map MIME types to Anthropic's expected media types
+type AnthropicMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+
+function toAnthropicMediaType(mimeType: string): AnthropicMediaType | null {
+  const mapping: Record<string, AnthropicMediaType> = {
+    'image/jpeg': 'image/jpeg',
+    'image/png': 'image/png',
+    'image/gif': 'image/gif',
+    'image/webp': 'image/webp',
+    'image/bmp': 'image/png', // Convert BMP to PNG for Anthropic
+  };
+  return mapping[mimeType] || null;
+}
+
 export async function parseEstimateRequest(email: {
   from: string;
   subject: string;
   body: string;
+  images?: ParseImage[];
 }): Promise<ParsedEstimateRequest> {
-  const userMessage = `From: ${email.from}
+  const textMessage = `From: ${email.from}
 Subject: ${email.subject}
 
 ${email.body}`;
+
+  // Build message content array
+  const content: Anthropic.MessageCreateParams['messages'][0]['content'] = [];
+
+  // Add images first if present
+  if (email.images && email.images.length > 0) {
+    content.push({
+      type: 'text',
+      text: `This email includes ${email.images.length} image attachment(s). Please analyze them for sign specifications, dimensions, and quantities.`,
+    });
+
+    for (const image of email.images) {
+      const mediaType = toAnthropicMediaType(image.mimeType);
+      if (mediaType) {
+        content.push({
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: mediaType,
+            data: image.data.toString('base64'),
+          },
+        });
+      }
+    }
+  }
+
+  // Add the email text
+  content.push({
+    type: 'text',
+    text: textMessage,
+  });
 
   try {
     const response = await getAnthropicClient().messages.create({
       model: 'claude-sonnet-4-5-20250929',
       max_tokens: 1024,
       system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userMessage }],
+      messages: [{ role: 'user', content }],
     });
 
     const textContent = response.content.find((c) => c.type === 'text');
