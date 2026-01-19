@@ -289,3 +289,49 @@ ${t(lang, 'noMatchFound')}`;
     throw error;
   }
 }
+
+export interface CompletionNotificationData {
+  telegramUserId?: string;
+  job: { id: string; description: string };
+  invoiceNumber: string;
+  invoiceTotal: number;
+  draftEmail: string;
+  contactName: string;
+  companyName: string;
+}
+
+export async function sendCompletionNotification(data: CompletionNotificationData): Promise<void> {
+  try {
+    const lang = data.telegramUserId
+      ? await getUserLanguage(data.telegramUserId)
+      : 'ko';
+
+    const message = `✅ ${t(lang, 'jobComplete')} - ${data.companyName}
+
+Job: #${data.job.id.slice(0, 8)} - ${data.job.description}
+Total: $${data.invoiceTotal.toLocaleString()}
+
+━━━━━━━━━━━━━━━━━━
+📝 ${t(lang, 'draftResponse')}:
+"${data.draftEmail.slice(0, 200)}${data.draftEmail.length > 200 ? '...' : ''}"
+
+📎 ${t(lang, 'invoiceAttached')}: ${data.invoiceNumber}.pdf`;
+
+    await bot.telegram.sendMessage(
+      env.TELEGRAM_ADMIN_CHAT_ID,
+      message,
+      Markup.inlineKeyboard([
+        [
+          Markup.button.callback(t(lang, 'sendEmail'), `complete_send:${data.job.id}`),
+          Markup.button.callback(t(lang, 'edit'), `complete_edit:${data.job.id}`),
+        ],
+        [
+          Markup.button.callback(t(lang, 'skipInvoice'), `complete_skip:${data.job.id}`),
+        ],
+      ])
+    );
+  } catch (error) {
+    console.error('Failed to send completion notification:', error);
+    throw error;
+  }
+}

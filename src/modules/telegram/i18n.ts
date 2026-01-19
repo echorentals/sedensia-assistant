@@ -35,6 +35,12 @@ const translations: Record<string, Record<Locale, string>> = {
   installed: { ko: '설치 완료', en: 'Installed' },
   completed: { ko: '완료', en: 'Completed' },
 
+  // Completion notification
+  jobComplete: { ko: '작업 완료', en: 'Job Complete' },
+  invoiceAttached: { ko: '청구서 첨부됨', en: 'Invoice Attached' },
+  sendEmail: { ko: '이메일 발송', en: 'Send Email' },
+  skipInvoice: { ko: '청구서 건너뛰기', en: 'Skip Invoice' },
+
   // Language command
   languageSet: { ko: '언어가 한국어로 설정되었습니다.\n모든 알림이 한국어로 표시됩니다.', en: 'Language set to English.\nAll notifications will now be in English.' },
 };
