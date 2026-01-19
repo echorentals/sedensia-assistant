@@ -125,3 +125,54 @@ Ask them to confirm they want the same items at the same price. Keep it to 3-4 s
 
   return textContent.text.trim();
 }
+
+export interface CompletionEmailInput {
+  contactName: string;
+  companyName: string;
+  jobDescription: string;
+  invoiceNumber: string;
+  invoiceTotal: number;
+  language: 'ko' | 'en';
+}
+
+export async function draftCompletionEmail(input: CompletionEmailInput): Promise<string> {
+  const languageInstructions =
+    input.language === 'ko'
+      ? '한국어로 작성해주세요. 정중하고 비즈니스적인 톤을 유지하세요.'
+      : 'Write in English. Maintain a professional and courteous tone.';
+
+  const response = await getAnthropicClient().messages.create({
+    model: 'claude-sonnet-4-5-20250929',
+    max_tokens: 500,
+    messages: [
+      {
+        role: 'user',
+        content: `You are drafting a job completion email for a sign fabrication company.
+
+${languageInstructions}
+
+Details:
+- Customer name: ${input.contactName}
+- Company: ${input.companyName}
+- Project: ${input.jobDescription}
+- Invoice number: ${input.invoiceNumber}
+- Total amount: $${input.invoiceTotal.toLocaleString()}
+
+Write a brief, professional email that:
+1. Confirms the job has been completed and delivered
+2. References the attached invoice
+3. Thanks them for their business
+4. Mentions payment terms (Net 30)
+
+Keep it concise (3-4 short paragraphs). Do not include subject line or signature - just the body text.`,
+      },
+    ],
+  });
+
+  const textContent = response.content.find((c) => c.type === 'text');
+  if (!textContent || textContent.type !== 'text') {
+    throw new Error('No text response from AI');
+  }
+
+  return textContent.text.trim();
+}
