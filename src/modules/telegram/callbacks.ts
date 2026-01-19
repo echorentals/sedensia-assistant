@@ -21,6 +21,7 @@ import {
   updateInvoiceSent,
   updateInvoicePaid,
   getInvoiceByJobId,
+  getContactById,
 } from '../../db/index.js';
 import {
   createEstimate as createQBEstimate,
@@ -91,11 +92,14 @@ export function setupCallbackHandlers(): void {
         return;
       }
 
-      // Find or create QuickBooks customer
-      // For now, use a placeholder - in production, match to contact
-      const customer = await findCustomerByName('Samsung');
+      // Get contact to find customer name
+      const contact = estimate.contact_id ? await getContactById(estimate.contact_id) : null;
+      const customerSearchName = contact?.company || contact?.name || 'Samsung';
+
+      // Find QuickBooks customer by contact's company name
+      const customer = await findCustomerByName(customerSearchName);
       if (!customer) {
-        await ctx.reply('❌ Customer not found in QuickBooks. Please create the customer first.');
+        await ctx.reply(`❌ Customer "${customerSearchName}" not found in QuickBooks. Please create the customer first.`);
         return;
       }
 
