@@ -1,6 +1,6 @@
 # Security Action Plan - Supabase RLS Fixes
 
-**Status:** CRITICAL FIXES REQUIRED
+**Status:** CRITICAL FIXES APPLIED ✅
 **Review Date:** 2026-01-18
 **Estimated Time:** 30 minutes
 
@@ -8,11 +8,14 @@
 
 ## TL;DR
 
-Two critical tables (`oauth_tokens` and `app_state`) have NO Row Level Security policies configured. While the current backend-only architecture is safe, this creates a significant vulnerability if the access model ever changes.
+~~Two critical tables (`oauth_tokens` and `app_state`) have NO Row Level Security policies configured.~~ **FIXED**
 
-**Impact:** If authenticated user access is added without fixing RLS, OAuth tokens and app state would be completely exposed.
-
-**Solution:** Apply migration `007_critical_rls_fixes.sql` to enable RLS on these tables.
+**Applied:** Migration `008_critical_rls_fixes.sql` deployed on 2026-01-18
+- ✅ RLS enabled on `oauth_tokens` with deny-all policy
+- ✅ RLS enabled on `app_state` with deny-all policy
+- ✅ Service role INSERT/UPDATE policies added
+- ✅ Security documentation added to `src/db/client.ts`
+- ✅ `.env` verified not tracked in git
 
 ---
 
