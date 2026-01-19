@@ -129,7 +129,7 @@ export async function processEmailMessage(messageId: string): Promise<boolean> {
         // Get pricing suggestions
         const itemInputs: ItemInput[] = parsed.items.map(item => ({
           signType: item.signType,
-          size: item.size,
+          size: item.size || 'TBD',
           quantity: item.quantity,
           material: item.material || undefined,
           description: item.description || undefined,

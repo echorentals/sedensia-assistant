@@ -34,11 +34,9 @@ async function main() {
   setupCallbackHandlers();
   setupOutcomeCommands();
 
-  // Start Telegram bot (polling for development)
-  if (env.NODE_ENV === 'development') {
-    bot.launch();
-    console.log('Telegram bot started in polling mode');
-  }
+  // Start Telegram bot (polling mode)
+  bot.launch();
+  console.log('Telegram bot started in polling mode');
 
   // Start HTTP server
   try {

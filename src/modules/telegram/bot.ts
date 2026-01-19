@@ -14,7 +14,7 @@ export interface EstimateRequestNotification {
   items: Array<{
     signType: string;
     quantity: number;
-    size: string;
+    size?: string | null;
   }>;
   specialRequests: string[];
   gmailMessageId: string;
@@ -22,7 +22,7 @@ export interface EstimateRequestNotification {
 
 export async function sendNotification(notification: EstimateRequestNotification): Promise<void> {
   const itemsList = notification.items
-    .map((item) => `• ${item.signType} - ${item.quantity} pcs - ${item.size}`)
+    .map((item) => `• ${item.signType} - ${item.quantity} pcs - ${item.size || 'TBD'}`)
     .join('\n');
 
   const specialRequestsList = notification.specialRequests.length > 0

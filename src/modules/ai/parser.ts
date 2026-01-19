@@ -18,7 +18,7 @@ export const ParsedEstimateRequestSchema = z.object({
   items: z.array(z.object({
     signType: z.string(),
     quantity: z.number(),
-    size: z.string(),
+    size: z.string().nullish(),
     material: z.string().nullish(),
     description: z.string().nullish(),
   })),
