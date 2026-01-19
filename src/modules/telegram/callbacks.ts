@@ -33,7 +33,7 @@ import { handleJobCompletion } from '../invoicing/index.js';
 const editSessions = new Map<string, {
   estimateId: string;
   itemIndex: number;
-  step: 'select_item' | 'enter_price';
+  step: 'select_item' | 'select_field' | 'enter_price' | 'enter_quantity';
 } | {
   type: 'status_response';
   jobId: string;
@@ -195,13 +195,66 @@ export function setupCallbackHandlers(): void {
     editSessions.set(userId, {
       ...session,
       itemIndex,
-      step: 'enter_price',
+      step: 'select_field',
     });
 
     await ctx.reply(
-      `${item.description}\n\nCurrent price: $${item.unitPrice.toLocaleString()}\n\nReply with new price (number only):`,
-      { reply_markup: { force_reply: true } }
+      `${item.description}\n\nQty: ${item.quantity} × $${item.unitPrice.toLocaleString()} = $${(item.quantity * item.unitPrice).toLocaleString()}\n\nWhat do you want to edit?`,
+      Markup.inlineKeyboard([
+        [
+          Markup.button.callback('💰 Price', `edit_field:price:${itemIndex}`),
+          Markup.button.callback('🔢 Quantity', `edit_field:qty:${itemIndex}`),
+        ],
+        [Markup.button.callback('Cancel', 'cancel_edit')],
+      ])
     );
+  });
+
+  // Select field to edit (price or quantity)
+  bot.action(/^edit_field:(price|qty):(\d+)$/, async (ctx) => {
+    const field = ctx.match[1];
+    const itemIndex = parseInt(ctx.match[2]);
+    const userId = ctx.from?.id.toString() || '';
+
+    const session = editSessions.get(userId);
+    if (!session || !('estimateId' in session)) {
+      await ctx.answerCbQuery('Session expired, please start over');
+      return;
+    }
+
+    await ctx.answerCbQuery();
+
+    const estimate = await getEstimateById(session.estimateId);
+    if (!estimate) {
+      await ctx.reply('❌ Estimate not found');
+      return;
+    }
+
+    const item = estimate.items[itemIndex];
+
+    if (field === 'price') {
+      editSessions.set(userId, {
+        ...session,
+        itemIndex,
+        step: 'enter_price',
+      });
+
+      await ctx.reply(
+        `${item.description}\n\nCurrent price: $${item.unitPrice.toLocaleString()}\n\nReply with new price (number only):`,
+        { reply_markup: { force_reply: true } }
+      );
+    } else {
+      editSessions.set(userId, {
+        ...session,
+        itemIndex,
+        step: 'enter_quantity',
+      });
+
+      await ctx.reply(
+        `${item.description}\n\nCurrent quantity: ${item.quantity}\n\nReply with new quantity (number only):`,
+        { reply_markup: { force_reply: true } }
+      );
+    }
   });
 
   // Cancel edit
@@ -453,7 +506,45 @@ export function setupCallbackHandlers(): void {
       const newTotal = updatedItems.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
 
       await ctx.reply(
-        `✅ Updated to $${newPrice.toLocaleString()}\n\nNew total: $${newTotal.toLocaleString()}`,
+        `✅ Price updated to $${newPrice.toLocaleString()}\n\nNew total: $${newTotal.toLocaleString()}`,
+        Markup.inlineKeyboard([
+          [
+            Markup.button.callback('✓ Approve', `approve_estimate:${session.estimateId}`),
+            Markup.button.callback('✏️ Edit More', `edit_estimate:${session.estimateId}`),
+          ],
+        ])
+      );
+    }
+
+    // Handle estimate quantity editing
+    if ('step' in session && session.step === 'enter_quantity') {
+      const newQty = parseInt(ctx.message.text.replace(/[,]/g, ''));
+      if (isNaN(newQty) || newQty < 1) {
+        await ctx.reply('Please enter a valid quantity (e.g., 1, 5, 10)');
+        return;
+      }
+
+      const estimate = await getEstimateById(session.estimateId);
+      if (!estimate) {
+        await ctx.reply('❌ Estimate not found');
+        editSessions.delete(userId);
+        return;
+      }
+
+      // Update the item quantity
+      const updatedItems = [...estimate.items];
+      updatedItems[session.itemIndex] = {
+        ...updatedItems[session.itemIndex],
+        quantity: newQty,
+      };
+
+      await updateEstimateItems(session.estimateId, updatedItems);
+      editSessions.delete(userId);
+
+      const newTotal = updatedItems.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+
+      await ctx.reply(
+        `✅ Quantity updated to ${newQty}\n\nNew total: $${newTotal.toLocaleString()}`,
         Markup.inlineKeyboard([
           [
             Markup.button.callback('✓ Approve', `approve_estimate:${session.estimateId}`),
