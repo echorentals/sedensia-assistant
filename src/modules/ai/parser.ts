@@ -56,9 +56,9 @@ Extract the following information from the email and any attached images:
 
 IMPORTANT: When images contain dimensions or specifications, these MUST be reflected in the items array. Image-derived dimensions take priority over any assumptions. For example, if an image shows "6ft x 2.25ft", the item size should be "72" x 27"" or "6ft x 2.25ft", not a default size.
 
-Common sign types: Channel Letters, Monument Sign, Pylon Sign, Wall Sign, Wayfinding Sign, ADA Sign, Vinyl Graphics, Vehicle Wrap, Banner, A-Frame, Standing Sign, Freestanding Sign
+Common sign types: ACM polymetal signs, PVC signs, corrugated plastic signs, vinyl banners, A-Frame, x-frame Standing Sign, large format vinyl banners, magnetic signs.
 
-Common materials: Aluminum, Acrylic, Dibond, PVC, Coroplast, HDU, Stainless Steel, Bronze
+Common materials: ACM polymetal, magnetic sheets, vinyl banners, PVC, corrugated plastic
 
 Respond with valid JSON matching this schema:
 {
