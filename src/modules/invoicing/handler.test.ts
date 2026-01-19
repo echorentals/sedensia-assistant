@@ -54,6 +54,7 @@ describe('handleJobCompletion', () => {
       items: [],
       notes: null,
       created_at: '2026-01-18T00:00:00Z',
+      turnaround_days: 14,
       updated_at: '2026-01-18T00:00:00Z',
     });
 
@@ -181,6 +182,7 @@ describe('handleJobCompletion', () => {
       items: [],
       notes: null,
       created_at: '2026-01-18T00:00:00Z',
+      turnaround_days: 14,
       updated_at: '2026-01-18T00:00:00Z',
     });
 
@@ -217,6 +219,7 @@ describe('handleJobCompletion', () => {
       items: [],
       notes: null,
       created_at: '2026-01-18T00:00:00Z',
+      turnaround_days: 14,
       updated_at: '2026-01-18T00:00:00Z',
     });
 
@@ -255,6 +258,7 @@ describe('handleJobCompletion', () => {
       items: [],
       notes: null,
       created_at: '2026-01-18T00:00:00Z',
+      turnaround_days: 14,
       updated_at: '2026-01-18T00:00:00Z',
     });
 
@@ -302,6 +306,7 @@ describe('handleJobCompletion', () => {
       items: [],
       notes: null,
       created_at: '2026-01-18T00:00:00Z',
+      turnaround_days: 14,
       updated_at: '2026-01-18T00:00:00Z',
     });
 
@@ -357,6 +362,7 @@ describe('handleJobCompletion', () => {
       items: [],
       notes: null,
       created_at: '2026-01-18T00:00:00Z',
+      turnaround_days: 14,
       updated_at: '2026-01-18T00:00:00Z',
     });
 

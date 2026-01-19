@@ -109,11 +109,16 @@ export async function createEstimate(input: CreateEstimateInput): Promise<QBEsti
     },
   }));
 
-  const estimate = {
+  const estimate: Record<string, unknown> = {
     CustomerRef: { value: input.customerId },
     Line: lines,
     GlobalTaxCalculation: 'TaxExcluded', // Calculate tax on top of line amounts
   };
+
+  // Add customer memo if provided
+  if (input.memo) {
+    estimate.CustomerMemo = { value: input.memo };
+  }
 
   console.log('Creating estimate:', JSON.stringify(estimate, null, 2));
 

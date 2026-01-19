@@ -23,6 +23,7 @@ export interface Estimate {
   total_amount: number | null;
   items: EstimateItem[];
   notes: string | null;
+  turnaround_days: number;
   created_at: string;
   updated_at: string;
 }
@@ -32,6 +33,7 @@ export interface CreateEstimateInput {
   gmailMessageId?: string;
   items: EstimateItem[];
   notes?: string;
+  turnaroundDays?: number;
 }
 
 export async function createEstimate(input: CreateEstimateInput): Promise<Estimate | null> {
@@ -49,6 +51,7 @@ export async function createEstimate(input: CreateEstimateInput): Promise<Estima
       total_amount: totalAmount,
       items: input.items,
       notes: input.notes || null,
+      turnaround_days: input.turnaroundDays || 14,
     })
     .select()
     .single();
@@ -121,6 +124,23 @@ export async function updateEstimateItems(id: string, items: EstimateItem[]): Pr
 
   if (error) {
     console.error('Failed to update estimate items:', error);
+    return false;
+  }
+
+  return true;
+}
+
+export async function updateEstimateTurnaround(id: string, turnaroundDays: number): Promise<boolean> {
+  const { error } = await supabase
+    .from('estimates')
+    .update({
+      turnaround_days: turnaroundDays,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id);
+
+  if (error) {
+    console.error('Failed to update estimate turnaround:', error);
     return false;
   }
 

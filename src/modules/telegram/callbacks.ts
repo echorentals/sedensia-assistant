@@ -4,6 +4,7 @@ import {
   getEstimateById,
   updateEstimateStatus,
   updateEstimateItems,
+  updateEstimateTurnaround,
   type Estimate,
   type Job,
   recordPricingHistory,
@@ -34,7 +35,7 @@ import { handleJobCompletion } from '../invoicing/index.js';
 const editSessions = new Map<string, {
   estimateId: string;
   itemIndex: number;
-  step: 'select_item' | 'select_field' | 'enter_price' | 'enter_quantity';
+  step: 'select_item' | 'select_field' | 'enter_price' | 'enter_quantity' | 'enter_turnaround';
 } | {
   type: 'status_response';
   jobId: string;
@@ -112,6 +113,7 @@ export function setupCallbackHandlers(): void {
           quantity: item.quantity,
           unitPrice: item.unitPrice,
         })),
+        memo: `Turnaround: ${estimate.turnaround_days} days`,
       });
 
       // Update local estimate with QuickBooks data
@@ -168,10 +170,11 @@ export function setupCallbackHandlers(): void {
     const buttons = estimate.items.map((item, idx) =>
       [Markup.button.callback(`${idx + 1}. ${item.description.slice(0, 30)}...`, `edit_item:${idx}`)]
     );
+    buttons.push([Markup.button.callback(`⏱️ Turnaround (${estimate.turnaround_days} days)`, `edit_turnaround:${estimateId}`)]);
     buttons.push([Markup.button.callback('Cancel', 'cancel_edit')]);
 
     await ctx.reply(
-      'Which item do you want to edit?',
+      'What do you want to edit?',
       Markup.inlineKeyboard(buttons)
     );
   });
@@ -267,6 +270,30 @@ export function setupCallbackHandlers(): void {
     editSessions.delete(userId);
     await ctx.answerCbQuery('Edit cancelled');
     await ctx.deleteMessage();
+  });
+
+  // Edit turnaround time
+  bot.action(/^edit_turnaround:(.+)$/, async (ctx) => {
+    const estimateId = ctx.match[1];
+    const userId = ctx.from?.id.toString() || '';
+    await ctx.answerCbQuery();
+
+    const estimate = await getEstimateById(estimateId);
+    if (!estimate) {
+      await ctx.reply('❌ Estimate not found');
+      return;
+    }
+
+    editSessions.set(userId, {
+      estimateId,
+      itemIndex: -1,
+      step: 'enter_turnaround',
+    });
+
+    await ctx.reply(
+      `Current turnaround: ${estimate.turnaround_days} days\n\nReply with new turnaround (number of days):`,
+      { reply_markup: { force_reply: true } }
+    );
   });
 
   // Reject estimate
@@ -556,6 +583,32 @@ export function setupCallbackHandlers(): void {
           ],
         ])
       );
+    }
+
+    // Handle turnaround editing
+    if ('step' in session && session.step === 'enter_turnaround') {
+      const newTurnaround = parseInt(ctx.message.text.replace(/[,]/g, ''));
+      if (isNaN(newTurnaround) || newTurnaround < 1) {
+        await ctx.reply('Please enter a valid number of days (e.g., 7, 14, 21)');
+        return;
+      }
+
+      const success = await updateEstimateTurnaround(session.estimateId, newTurnaround);
+      editSessions.delete(userId);
+
+      if (success) {
+        await ctx.reply(
+          `✅ Turnaround updated to ${newTurnaround} days`,
+          Markup.inlineKeyboard([
+            [
+              Markup.button.callback('✓ Approve', `approve_estimate:${session.estimateId}`),
+              Markup.button.callback('✏️ Edit More', `edit_estimate:${session.estimateId}`),
+            ],
+          ])
+        );
+      } else {
+        await ctx.reply('❌ Failed to update turnaround');
+      }
     }
   });
 }

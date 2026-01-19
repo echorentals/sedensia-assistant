@@ -73,6 +73,7 @@ export interface PricedEstimateNotification {
   specialRequests: string[];
   estimateId: string;
   gmailMessageId: string;
+  turnaroundDays: number;
 }
 
 export async function sendPricedEstimateNotification(notification: PricedEstimateNotification): Promise<void> {
@@ -105,7 +106,8 @@ Subject: ${notification.subject}
 ${itemsList}
 
 ━━━━━━━━━━━━━━━━━━━━
-Total: $${total.toLocaleString()}${specialRequestsList}`;
+Total: $${total.toLocaleString()}
+⏱️ Turnaround: ${notification.turnaroundDays} days${specialRequestsList}`;
 
   await bot.telegram.sendMessage(
     env.TELEGRAM_ADMIN_CHAT_ID,

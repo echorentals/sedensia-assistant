@@ -172,6 +172,7 @@ export async function processEmailMessage(messageId: string): Promise<boolean> {
           specialRequests: parsed.specialRequests,
           estimateId: estimate.id,
           gmailMessageId: messageId,
+          turnaroundDays: estimate.turnaround_days,
         });
 
         console.log('Priced estimate notification sent');
