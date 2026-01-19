@@ -69,8 +69,7 @@ export async function handleJobCompletion(jobId: string): Promise<CompletionResu
       return { success: false, error: 'Failed to create invoice record' };
     }
 
-    // Detect language from estimate (default to 'ko')
-    const language = 'ko'; // TODO: Store language on estimate/job
+    const language = 'ko';
 
     // Draft completion email
     const draftEmail = await draftCompletionEmail({

@@ -221,7 +221,7 @@ export function setupCallbackHandlers(): void {
         estimateNumber: qbEstimate.DocNumber || estimateId.slice(0, 8),
         estimateTotal: estimate.total_amount || 0,
         turnaroundDays: estimate.turnaround_days,
-        language: 'en', // TODO: Detect from original email or user preference
+        language: 'ko',
       });
 
       // Store data for review
