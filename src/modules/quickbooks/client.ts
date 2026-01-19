@@ -55,6 +55,7 @@ export interface QBLineItem {
   Amount: number;
   Description: string;
   SalesItemLineDetail: {
+    ItemRef: { value: string; name?: string };
     Qty: number;
     UnitPrice: number;
   };
@@ -86,11 +87,18 @@ export async function createEstimate(input: CreateEstimateInput): Promise<QBEsti
   const client = await getQuickBooksClient();
   if (!client) throw new Error('QuickBooks client not available');
 
+  // Find a service item to use for line items
+  const serviceItem = await findServiceItem();
+  if (!serviceItem) {
+    throw new Error('No service item found in QuickBooks. Please create a "Services" item first.');
+  }
+
   const lines: QBLineItem[] = input.lines.map(line => ({
     DetailType: 'SalesItemLineDetail',
     Amount: line.quantity * line.unitPrice,
     Description: line.description,
     SalesItemLineDetail: {
+      ItemRef: { value: serviceItem.Id, name: serviceItem.Name },
       Qty: line.quantity,
       UnitPrice: line.unitPrice,
     },
@@ -180,6 +188,29 @@ export async function findCustomerByName(name: string): Promise<QBCustomer | nul
   );
 
   return result.QueryResponse.Customer?.[0] || null;
+}
+
+// Item types for products/services
+export interface QBItem {
+  Id: string;
+  Name: string;
+  Type: string;
+}
+
+// Find a generic service item for line items
+export async function findServiceItem(): Promise<QBItem | null> {
+  const client = await getQuickBooksClient();
+  if (!client) return null;
+
+  // Look for common service item names
+  const query = `SELECT * FROM Item WHERE Type = 'Service' MAXRESULTS 10`;
+  const result = await qbRequest<{ QueryResponse: { Item?: QBItem[] } }>(
+    client,
+    `/query?query=${encodeURIComponent(query)}`
+  );
+
+  // Return first service item found
+  return result.QueryResponse.Item?.[0] || null;
 }
 
 // Invoice types
