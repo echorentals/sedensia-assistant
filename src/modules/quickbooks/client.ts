@@ -181,3 +181,93 @@ export async function findCustomerByName(name: string): Promise<QBCustomer | nul
 
   return result.QueryResponse.Customer?.[0] || null;
 }
+
+// Invoice types
+export interface QBInvoice {
+  Id?: string;
+  DocNumber?: string;
+  CustomerRef: { value: string; name?: string };
+  Line: QBLineItem[];
+  TotalAmt?: number;
+  TxnDate?: string;
+  EmailStatus?: string;
+  LinkedTxn?: Array<{ TxnId: string; TxnType: string }>;
+}
+
+export async function createInvoiceFromEstimate(estimateId: string): Promise<QBInvoice | null> {
+  const client = await getQuickBooksClient();
+  if (!client) return null;
+
+  try {
+    // Fetch the estimate
+    const estimate = await getEstimate(estimateId);
+    if (!estimate) {
+      console.error('Estimate not found:', estimateId);
+      return null;
+    }
+
+    // Create invoice with same data
+    const invoice: QBInvoice = {
+      CustomerRef: estimate.CustomerRef,
+      Line: estimate.Line,
+      LinkedTxn: [{ TxnId: estimateId, TxnType: 'Estimate' }],
+    };
+
+    const result = await qbRequest<{ Invoice: QBInvoice }>(
+      client,
+      '/invoice',
+      {
+        method: 'POST',
+        body: JSON.stringify(invoice),
+      }
+    );
+
+    return result.Invoice;
+  } catch (error) {
+    console.error('Failed to create invoice from estimate:', error);
+    return null;
+  }
+}
+
+export async function getInvoice(invoiceId: string): Promise<QBInvoice | null> {
+  const client = await getQuickBooksClient();
+  if (!client) return null;
+
+  try {
+    const result = await qbRequest<{ Invoice: QBInvoice }>(
+      client,
+      `/invoice/${invoiceId}`
+    );
+    return result.Invoice;
+  } catch {
+    return null;
+  }
+}
+
+export async function getInvoicePdf(invoiceId: string): Promise<Buffer | null> {
+  const client = await getQuickBooksClient();
+  if (!client) return null;
+
+  try {
+    const response = await fetch(
+      `${client.baseUrl}/invoice/${invoiceId}/pdf`,
+      {
+        headers: {
+          'Accept': 'application/pdf',
+          'Authorization': `Bearer ${client.tokens.accessToken}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      console.error('Failed to get invoice PDF:', response.status);
+      return null;
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  } catch (error) {
+    console.error('Failed to get invoice PDF:', error);
+    return null;
+  }
+}
