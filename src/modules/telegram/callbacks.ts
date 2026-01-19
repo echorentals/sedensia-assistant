@@ -5,6 +5,7 @@ import {
   updateEstimateStatus,
   updateEstimateItems,
   type Estimate,
+  type Job,
   recordPricingHistory,
   updatePricingOutcome,
   getPendingEstimates,
@@ -583,7 +584,7 @@ export function setupOutcomeCommands(): void {
       `Amount: ${amount}\n\n` +
       `${job.description}\n\n` +
       `Commands:\n` +
-      `/stage ${job.id.slice(0, 8)} <pending|in_production|ready|installed|completed>\n` +
+      `/stage ${job.id.slice(0, 8)} <pending|in_production|ready|installed|completed|invoiced|paid>\n` +
       `/eta ${job.id.slice(0, 8)} <YYYY-MM-DD>`
     );
   });
@@ -592,11 +593,11 @@ export function setupOutcomeCommands(): void {
   bot.command('stage', async (ctx) => {
     const args = ctx.message.text.split(' ');
     if (args.length < 3) {
-      await ctx.reply('Usage: /stage <job_id> <pending|in_production|ready|installed|completed>');
+      await ctx.reply('Usage: /stage <job_id> <pending|in_production|ready|installed|completed|invoiced|paid>');
       return;
     }
 
-    const validStages = ['pending', 'in_production', 'ready', 'installed', 'completed'];
+    const validStages = ['pending', 'in_production', 'ready', 'installed', 'completed', 'invoiced', 'paid'];
     const stage = args[2].toLowerCase();
     if (!validStages.includes(stage)) {
       await ctx.reply(`Invalid stage. Use: ${validStages.join(', ')}`);
@@ -609,7 +610,7 @@ export function setupOutcomeCommands(): void {
       return;
     }
 
-    const success = await updateJobStage(job.id, stage as 'pending' | 'in_production' | 'ready' | 'installed' | 'completed');
+    const success = await updateJobStage(job.id, stage as Job['stage']);
     if (success) {
       await ctx.reply(`✅ Job ${job.id.slice(0, 8)} updated to: ${stage}`);
 
