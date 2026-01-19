@@ -57,7 +57,7 @@ export async function getActiveJobs(): Promise<Job[]> {
   const { data, error } = await supabase
     .from('jobs')
     .select('*')
-    .neq('stage', 'completed')
+    .not('stage', 'eq', 'paid')
     .order('created_at', { ascending: false });
 
   if (error || !data) return [];
