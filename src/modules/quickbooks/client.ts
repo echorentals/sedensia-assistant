@@ -93,29 +93,27 @@ export async function createEstimate(input: CreateEstimateInput): Promise<QBEsti
     throw new Error('No service item found in QuickBooks. Please create a "Services" item first.');
   }
 
-  const lines: QBLineItem[] = input.lines.map(line => ({
-    DetailType: 'SalesItemLineDetail',
-    Amount: line.quantity * line.unitPrice,
+  console.log('Using service item:', serviceItem);
+
+  // Build line items per QuickBooks API spec
+  const lines = input.lines.map((line, idx) => ({
+    LineNum: idx + 1,
     Description: line.description,
+    Amount: line.quantity * line.unitPrice,
+    DetailType: 'SalesItemLineDetail',
     SalesItemLineDetail: {
-      ItemRef: { value: serviceItem.Id, name: serviceItem.Name },
+      ItemRef: { value: serviceItem.Id },
       Qty: line.quantity,
       UnitPrice: line.unitPrice,
     },
   }));
 
-  const estimate: QBEstimate = {
-    CustomerRef: {
-      value: input.customerId,
-      name: input.customerName,
-    },
+  const estimate = {
+    CustomerRef: { value: input.customerId },
     Line: lines,
-    EmailStatus: 'NotSent',
   };
 
-  if (input.memo) {
-    estimate.CustomerMemo = { value: input.memo };
-  }
+  console.log('Creating estimate:', JSON.stringify(estimate, null, 2));
 
   const result = await qbRequest<{ Estimate: QBEstimate }>(
     client,
