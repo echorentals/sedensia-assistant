@@ -437,10 +437,12 @@ Provide a web-based dashboard for managing jobs, estimates, contacts, and pricin
 - Tailwind CSS for styling
 - Deployed on Netlify
 
-## Phase 4: Status Inquiries & Reorder Requests
+## Phase 4: Status Inquiries & Reorder Requests ✓
 
 ### Goal
 Handle status inquiries, reorder requests, and automated response drafting with multi-language support.
+
+### Status: COMPLETE
 
 ### Language Handling
 
@@ -633,30 +635,30 @@ Email: "지난달 안내 표지판 동일하게 추가 주문 가능할까요?"
 ### Implementation Tasks
 
 **Database:**
-- [ ] Create `telegram_users` table with language preference
+- [x] Create `telegram_users` table with language preference
 
 **AI Module:**
-- [ ] Expand parser for all intents (`status_inquiry`, `reorder`, `approval`, `general`)
-- [ ] Add language detection to parser output
-- [ ] Add response drafting function with language parameter
+- [x] Expand parser for all intents (`status_inquiry`, `reorder`, `approval`, `general`)
+- [x] Add language detection to parser output
+- [x] Add response drafting function with language parameter
 
 **Job Matching:**
-- [ ] Keyword extraction from emails
-- [ ] Fuzzy search across jobs/estimates by contact + keywords
-- [ ] Confidence scoring for matches
+- [x] Keyword extraction from emails
+- [x] Fuzzy search across jobs/estimates by contact + keywords
+- [x] Confidence scoring for matches
 
 **Telegram:**
-- [ ] Add `/lang` command for language preference
-- [ ] Localized message templates (Korean/English)
-- [ ] Status inquiry notification + callbacks (Send/Edit/Ignore)
-- [ ] Reorder notification + callbacks (Create/Edit/Ignore)
-- [ ] Edit flow for response text
+- [x] Add `/lang` command for language preference
+- [x] Localized message templates (Korean/English)
+- [x] Status inquiry notification + callbacks (Send/Edit/Ignore)
+- [x] Reorder notification + callbacks (Create/Edit/Ignore)
+- [x] Edit flow for response text
 
 **Gmail:**
-- [ ] Reply-to-thread function (respond in same email thread)
+- [x] Reply-to-thread function (respond in same email thread)
 
 **Email Processor:**
-- [ ] Route emails by intent to appropriate flow
+- [x] Route emails by intent to appropriate flow
 
 ## Phase 5: Invoicing & Job Completion
 
@@ -834,12 +836,12 @@ ANTHROPIC_API_KEY=xxx
 - Jobs, estimates, contacts, and pricing pages functional
 - Deployed on Netlify
 
-### Phase 4 Complete When:
-- Status inquiries get matched to correct job
-- Reorder requests pull previous pricing
-- Draft responses sent for Telegram approval before emailing
-- Language detection works (Korean email → Korean response)
-- Telegram messages respect user language preference (`/lang` command)
+### Phase 4 Complete When: ✓
+- Status inquiries get matched to correct job ✓
+- Reorder requests pull previous pricing ✓
+- Draft responses sent for Telegram approval before emailing ✓
+- Language detection works (Korean email → Korean response) ✓
+- Telegram messages respect user language preference (`/lang` command) ✓
 
 ### Phase 5 Complete When:
 - [Mark Delivered] converts estimate to invoice
