@@ -9,6 +9,8 @@ export {
   updateEstimateTurnaround,
   getRecentEstimates,
   getPendingEstimates,
+  findEstimateByGmailMessageId,
+  findSentEstimateByContactId,
 } from './estimates.js';
 export type { Estimate, EstimateItem } from './estimates.js';
 export {

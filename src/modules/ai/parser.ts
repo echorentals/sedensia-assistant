@@ -13,7 +13,7 @@ function getAnthropicClient(): Anthropic {
 }
 
 export const ParsedEstimateRequestSchema = z.object({
-  intent: z.enum(['new_request', 'status_inquiry', 'reorder', 'approval', 'general']),
+  intent: z.enum(['new_request', 'status_inquiry', 'reorder', 'approval', 'rejection', 'general']),
   language: z.enum(['ko', 'en']).default('en'),
   items: z.array(z.object({
     signType: z.string(),
@@ -41,7 +41,20 @@ export interface ParseImage {
 const SYSTEM_PROMPT = `You are an AI assistant that parses estimate request emails for a sign fabrication company.
 
 Extract the following information from the email and any attached images:
-1. Intent: Is this a new estimate request, a status inquiry about an existing job, a reorder of previous signs, an approval of a quote, or a general message?
+1. Intent: Classify the email as one of:
+   - "new_request": A new estimate request for signs
+   - "status_inquiry": Asking about status of an existing job
+   - "reorder": Requesting to reorder previous signs
+   - "approval": Approving/accepting a quote (go ahead, proceed)
+   - "rejection": Declining/rejecting a quote (not proceeding, going with another vendor)
+   - "general": Other general messages
+
+   IMPORTANT for approval/rejection detection:
+   - Korean approval phrases: "네 진행해주세요", "진행 부탁드립니다", "승인합니다", "확정합니다", "오케이", "OK"
+   - Korean rejection phrases: "타업체 통해 진행", "진행하지 않겠습니다", "취소", "다른 업체로", "가격 이유로"
+   - English approval: "please proceed", "approved", "go ahead", "let's do it"
+   - English rejection: "not proceeding", "going with another vendor", "canceling", "too expensive"
+
 2. Language: Detect the primary language of the email - "ko" for Korean, "en" for English
 3. Items: List each sign type requested with quantity, size, and material if mentioned
 4. Special Requests: Any specific requirements like colors (PMS codes), deadlines, installation needs
@@ -62,7 +75,7 @@ Common materials: ACM polymetal, magnetic sheets, vinyl banners, PVC, corrugated
 
 Respond with valid JSON matching this schema:
 {
-  "intent": "new_request" | "status_inquiry" | "reorder" | "approval" | "general",
+  "intent": "new_request" | "status_inquiry" | "reorder" | "approval" | "rejection" | "general",
   "language": "ko" | "en",
   "items": [{ "signType": string, "quantity": number, "size": string, "material": string | null, "description": string | null }],
   "specialRequests": string[],

@@ -176,3 +176,35 @@ export async function getPendingEstimates(): Promise<Estimate[]> {
 
   return data as Estimate[];
 }
+
+export async function findEstimateByGmailMessageId(gmailMessageId: string): Promise<Estimate | null> {
+  const { data, error } = await supabase
+    .from('estimates')
+    .select('*')
+    .eq('gmail_message_id', gmailMessageId)
+    .single();
+
+  if (error || !data) {
+    return null;
+  }
+
+  return data as Estimate;
+}
+
+export async function findSentEstimateByContactId(contactId: string): Promise<Estimate | null> {
+  // Find the most recent sent estimate for a contact
+  const { data, error } = await supabase
+    .from('estimates')
+    .select('*')
+    .eq('contact_id', contactId)
+    .eq('status', 'sent')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (error || !data) {
+    return null;
+  }
+
+  return data as Estimate;
+}

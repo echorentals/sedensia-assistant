@@ -1,8 +1,8 @@
-import { getMessage, extractEmailContent, extractEmailImages } from './client.js';
+import { getMessage, extractEmailContent, extractEmailImages, replyToThread, getMessageThreadId } from './client.js';
 import { getWatchState, getNewMessagesSinceHistoryId } from './watch.js';
-import { findContactByEmail, createEstimate } from '../../db/index.js';
+import { findContactByEmail, createEstimate, findSentEstimateByContactId, updateEstimateStatus, getContactById } from '../../db/index.js';
 import type { EstimateItem } from '../../db/index.js';
-import { parseEstimateRequest } from '../ai/index.js';
+import { parseEstimateRequest, draftApprovalConfirmation } from '../ai/index.js';
 import type { ParseImage } from '../ai/index.js';
 import { sendNotification, sendSimpleMessage, sendPricedEstimateNotification, sendStatusInquiryNotification, sendReorderNotification, storeDraftResponse } from '../telegram/index.js';
 import type { EstimateRequestNotification } from '../telegram/index.js';
@@ -271,12 +271,87 @@ export async function processEmailMessage(messageId: string): Promise<boolean> {
       break;
     }
 
-    case 'approval':
+    case 'approval': {
+      // Find the most recent sent estimate for this contact
+      const estimate = await findSentEstimateByContactId(contact.id);
+
+      if (!estimate) {
+        await sendSimpleMessage(
+          `✅ Approval received from ${contact.name}\n\nSubject: ${subject}\n\n⚠️ No pending estimate found to mark as won.`
+        );
+        break;
+      }
+
+      // Update estimate status to won
+      const updated = await updateEstimateStatus(estimate.id, 'won');
+      if (!updated) {
+        console.error('Failed to update estimate status to won');
+      }
+
+      // Draft and send confirmation email
+      const itemsSummary = estimate.items
+        .map(item => `${item.description} (x${item.quantity})`)
+        .join(', ');
+
+      const confirmationEmail = await draftApprovalConfirmation({
+        contactName: contact.name,
+        companyName: contact.company || '',
+        itemsSummary,
+        estimateNumber: estimate.quickbooks_doc_number || estimate.id.slice(0, 8),
+        turnaroundDays: estimate.turnaround_days,
+      });
+
+      // Get thread ID from the current message to reply in same thread
+      const threadId = await getMessageThreadId(messageId);
+      if (threadId) {
+        const replySubject = subject.startsWith('Re:') ? subject : `Re: ${subject}`;
+        await replyToThread({
+          threadId,
+          messageId: `<${messageId}@mail.gmail.com>`,
+          to: from,
+          subject: replySubject,
+          body: confirmationEmail,
+        });
+        console.log('Approval confirmation email sent');
+      }
+
       await sendSimpleMessage(
-        `✅ Approval received from ${contact.name}\n\nSubject: ${subject}`
+        `🎉 Estimate WON!\n\n` +
+        `From: ${contact.name}\n` +
+        `Estimate: #${estimate.quickbooks_doc_number || estimate.id.slice(0, 8)}\n` +
+        `Amount: $${estimate.total_amount?.toLocaleString() || '0'}\n\n` +
+        `✅ Status updated to WON\n` +
+        `✅ Confirmation email sent`
       );
-      // TODO: Auto-update job status
       break;
+    }
+
+    case 'rejection': {
+      // Find the most recent sent estimate for this contact
+      const estimate = await findSentEstimateByContactId(contact.id);
+
+      if (!estimate) {
+        await sendSimpleMessage(
+          `❌ Rejection received from ${contact.name}\n\nSubject: ${subject}\n\n⚠️ No pending estimate found to mark as lost.`
+        );
+        break;
+      }
+
+      // Update estimate status to lost
+      const updated = await updateEstimateStatus(estimate.id, 'lost');
+      if (!updated) {
+        console.error('Failed to update estimate status to lost');
+      }
+
+      await sendSimpleMessage(
+        `😔 Estimate LOST\n\n` +
+        `From: ${contact.name}\n` +
+        `Estimate: #${estimate.quickbooks_doc_number || estimate.id.slice(0, 8)}\n` +
+        `Amount: $${estimate.total_amount?.toLocaleString() || '0'}\n\n` +
+        `Status updated to LOST`
+      );
+      break;
+    }
 
     case 'general':
     default:

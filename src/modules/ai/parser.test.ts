@@ -254,6 +254,7 @@ describe('ai parser', () => {
         ...validData,
         language: 'en',
         keywords: [],
+        hasImages: false,
       });
     });
 

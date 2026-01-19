@@ -229,3 +229,48 @@ Keep it concise (3-4 short paragraphs). Do not include subject line or signature
 
   return textContent.text.trim();
 }
+
+export interface ApprovalConfirmationInput {
+  contactName: string;
+  companyName: string;
+  itemsSummary: string;
+  estimateNumber: string;
+  turnaroundDays: number;
+}
+
+export async function draftApprovalConfirmation(input: ApprovalConfirmationInput): Promise<string> {
+  const response = await getAnthropicClient().messages.create({
+    model: 'claude-sonnet-4-5-20250929',
+    max_tokens: 500,
+    messages: [
+      {
+        role: 'user',
+        content: `You are drafting an order confirmation email for a sign fabrication company.
+
+한국어로 작성해주세요. 정중하고 비즈니스적인 톤을 유지하세요.
+
+Details:
+- Customer name: ${input.contactName}
+- Company: ${input.companyName}
+- Items: ${input.itemsSummary}
+- Estimate number: ${input.estimateNumber}
+- Turnaround time: ${input.turnaroundDays} days
+
+Write a brief, professional email that:
+1. Thanks them for confirming the order
+2. Confirms we will begin production
+3. Reminds them of the turnaround time
+4. Mentions we will notify them when ready
+
+Keep it concise (2-3 short paragraphs). Do not include subject line or signature - just the body text.`,
+      },
+    ],
+  });
+
+  const textContent = response.content.find((c) => c.type === 'text');
+  if (!textContent || textContent.type !== 'text') {
+    throw new Error('No text response from AI');
+  }
+
+  return textContent.text.trim();
+}
