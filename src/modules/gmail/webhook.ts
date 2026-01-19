@@ -1,6 +1,6 @@
 import { getMessage, extractEmailContent, extractEmailImages, replyToThread, getMessageThreadId } from './client.js';
 import { getWatchState, getNewMessagesSinceHistoryId } from './watch.js';
-import { findContactByEmail, createEstimate, findSentEstimateByContactId, updateEstimateStatus, getContactById } from '../../db/index.js';
+import { findContactByEmail, createEstimate, findSentEstimateByContactId, updateEstimateStatus, getContactById, supabase } from '../../db/index.js';
 import type { EstimateItem } from '../../db/index.js';
 import { parseEstimateRequest, draftApprovalConfirmation } from '../ai/index.js';
 import type { ParseImage } from '../ai/index.js';
@@ -10,31 +10,33 @@ import { suggestPricesForEstimate } from '../pricing/index.js';
 import type { ItemInput } from '../pricing/index.js';
 import { handleStatusInquiry, handleReorder } from '../email/index.js';
 
-// Deduplication: track recently processed message IDs (TTL: 5 minutes)
-const processedMessages = new Map<string, number>();
-const DEDUP_TTL_MS = 5 * 60 * 1000;
+// Database-backed deduplication for Gmail messages
+// Uses atomic insert to prevent race conditions
+async function tryMarkMessageProcessed(messageId: string): Promise<boolean> {
+  // Try to insert the message ID - if it already exists, this will fail
+  const { error } = await supabase
+    .from('processed_gmail_messages')
+    .insert({ gmail_message_id: messageId });
 
-function isMessageProcessed(messageId: string): boolean {
-  const timestamp = processedMessages.get(messageId);
-  if (!timestamp) return false;
-  if (Date.now() - timestamp > DEDUP_TTL_MS) {
-    processedMessages.delete(messageId);
-    return false;
+  if (error) {
+    // If error is a unique constraint violation, message was already processed
+    if (error.code === '23505') {
+      return false; // Already processed
+    }
+    // For other errors, log but allow processing (fail open)
+    console.error('Deduplication check error:', error);
   }
-  return true;
+
+  return true; // Not processed, proceed
 }
 
-function markMessageProcessed(messageId: string): void {
-  processedMessages.set(messageId, Date.now());
-  // Clean up old entries periodically
-  if (processedMessages.size > 100) {
-    const now = Date.now();
-    for (const [id, ts] of processedMessages) {
-      if (now - ts > DEDUP_TTL_MS) {
-        processedMessages.delete(id);
-      }
-    }
-  }
+// Cleanup old processed messages (call periodically)
+async function cleanupOldProcessedMessages(): Promise<void> {
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(); // 24 hours ago
+  await supabase
+    .from('processed_gmail_messages')
+    .delete()
+    .lt('processed_at', cutoff);
 }
 
 export interface PubSubMessage {
@@ -89,12 +91,12 @@ export async function processEmailMessage(messageId: string): Promise<boolean> {
     return false;
   }
 
-  // Deduplication check
-  if (isMessageProcessed(messageId)) {
+  // Atomic deduplication check using database
+  const shouldProcess = await tryMarkMessageProcessed(messageId);
+  if (!shouldProcess) {
     console.log('Skipping duplicate message:', messageId);
     return false;
   }
-  markMessageProcessed(messageId);
 
   console.log('Processing email message:', messageId);
 
