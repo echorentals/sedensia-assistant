@@ -1,7 +1,7 @@
 # Phase 5: Invoicing & Job Completion - Design
 
 **Date:** 2026-01-18
-**Status:** Approved
+**Status:** Implemented
 
 ## Overview
 
@@ -181,8 +181,8 @@ Updates:
 
 ## Success Criteria
 
-- [ ] `/stage <id> completed` triggers invoice creation
-- [ ] Completion email drafted in correct language
-- [ ] Telegram shows review with PDF attachment indicator
-- [ ] [Send] replies to original Gmail thread with PDF
-- [ ] `/paid <id>` updates job and invoice records
+- [x] `/stage <id> completed` triggers invoice creation
+- [x] Completion email drafted in correct language
+- [x] Telegram shows review with PDF attachment indicator
+- [x] [Send] replies to original Gmail thread with PDF
+- [x] `/paid <id>` updates job and invoice records
