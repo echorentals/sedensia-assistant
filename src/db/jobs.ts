@@ -5,7 +5,7 @@ export interface Job {
   estimate_id: string | null;
   contact_id: string | null;
   description: string;
-  stage: 'pending' | 'in_production' | 'ready' | 'installed' | 'completed';
+  stage: 'pending' | 'in_production' | 'ready' | 'installed' | 'completed' | 'invoiced' | 'paid';
   eta: string | null;
   total_amount: number | null;
   quickbooks_invoice_id: string | null;
