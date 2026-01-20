@@ -98,8 +98,6 @@ export async function processEmailMessage(messageId: string): Promise<boolean> {
     return false;
   }
 
-  console.log('Processing email message:', messageId);
-
   // Fetch the full message
   const message = await getMessage(messageId);
   if (!message) {
@@ -107,18 +105,24 @@ export async function processEmailMessage(messageId: string): Promise<boolean> {
     return false;
   }
 
-  // Extract email content
-  const { from, subject, body } = extractEmailContent(message);
-  console.log('Email from:', from, 'Subject:', subject);
-
-  // Check if sender is a monitored contact
-  const contact = await findContactByEmail(from);
-  if (!contact) {
-    console.log('Sender not in monitored contacts, skipping');
+  // Only process messages in INBOX (skip sent, drafts, etc.)
+  const labels = message.labelIds || [];
+  if (!labels.includes('INBOX')) {
+    // Silently skip non-inbox messages (sent, drafts, etc.)
     return false;
   }
 
-  console.log('Matched contact:', contact.name, contact.company);
+  // Extract email content
+  const { from, subject, body } = extractEmailContent(message);
+
+  // Check if sender is a monitored contact (early exit before logging)
+  const contact = await findContactByEmail(from);
+  if (!contact) {
+    // Silently skip messages from non-monitored contacts
+    return false;
+  }
+
+  console.log('Processing email from:', contact.name, 'Subject:', subject);
 
   // Extract images from email
   const emailImages = await extractEmailImages(message);
