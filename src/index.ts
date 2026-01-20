@@ -5,6 +5,7 @@ import { webhookRoutes } from './routes/webhooks.js';
 import { authRoutes } from './routes/auth.js';
 import { setupRoutes } from './routes/setup.js';
 import { bot, setupCallbackHandlers, setupOutcomeCommands } from './modules/telegram/index.js';
+import { startWatchAutoRenewal } from './modules/gmail/index.js';
 
 async function main() {
   const fastify = Fastify({
@@ -37,6 +38,9 @@ async function main() {
   // Start Telegram bot (polling mode)
   bot.launch();
   console.log('Telegram bot started in polling mode');
+
+  // Start Gmail watch auto-renewal
+  startWatchAutoRenewal();
 
   // Start HTTP server
   try {

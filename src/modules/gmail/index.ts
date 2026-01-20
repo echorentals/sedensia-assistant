@@ -12,4 +12,10 @@ export {
 } from './client.js';
 export { getGmailTokens, saveGmailTokens } from './tokens.js';
 export { handleGmailWebhook, processEmailMessage, type PubSubMessage } from './webhook.js';
-export { setupGmailWatch, getWatchState, getNewMessagesSinceHistoryId } from './watch.js';
+export {
+  setupGmailWatch,
+  getWatchState,
+  getNewMessagesSinceHistoryId,
+  checkAndRenewWatch,
+  startWatchAutoRenewal,
+} from './watch.js';

@@ -1,6 +1,10 @@
 import { getGmailClient } from './client.js';
 import { supabase } from '../../db/index.js';
 import { env } from '../../config/index.js';
+import { sendSimpleMessage } from '../telegram/index.js';
+
+const RENEWAL_BUFFER_MS = 24 * 60 * 60 * 1000; // Renew 1 day before expiry
+const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // Check every 6 hours
 
 interface WatchState {
   historyId: string;
@@ -98,4 +102,46 @@ export async function getNewMessagesSinceHistoryId(historyId: string): Promise<s
     console.error('Failed to fetch history:', error);
     return [];
   }
+}
+
+export async function checkAndRenewWatch(): Promise<void> {
+  const state = await getWatchState();
+
+  if (!state) {
+    console.log('No watch state found, setting up new watch');
+    const result = await setupGmailWatch();
+    if (result) {
+      await sendSimpleMessage(
+        `🔄 Gmail watch established\n\nExpiration: ${result.expiration.toISOString()}`
+      );
+    }
+    return;
+  }
+
+  const expiration = new Date(state.expiration);
+  const renewalThreshold = new Date(Date.now() + RENEWAL_BUFFER_MS);
+
+  if (expiration < renewalThreshold) {
+    console.log('Watch expiring soon, renewing...');
+    const result = await setupGmailWatch();
+    if (result) {
+      await sendSimpleMessage(
+        `🔄 Gmail watch auto-renewed\n\nNew expiration: ${result.expiration.toISOString()}`
+      );
+    }
+  } else {
+    console.log('Gmail watch still valid until:', expiration.toISOString());
+  }
+}
+
+export function startWatchAutoRenewal(): void {
+  // Initial check on startup
+  checkAndRenewWatch().catch(console.error);
+
+  // Periodic checks every 6 hours
+  setInterval(() => {
+    checkAndRenewWatch().catch(console.error);
+  }, CHECK_INTERVAL_MS);
+
+  console.log('Gmail watch auto-renewal started (checking every 6 hours)');
 }
