@@ -6,10 +6,18 @@ import {
 } from '../modules/gmail/webhook.js';
 import { listRecentMessages, extractEmailContent } from '../modules/gmail/index.js';
 import { env } from '../config/index.js';
+import { verifyPubSubToken } from '../utils/pubsub-auth.js';
 
 export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
   // Gmail Pub/Sub webhook
   fastify.post<{ Body: PubSubMessage }>('/webhooks/gmail', async (request, reply) => {
+    // Verify Pub/Sub authentication token (if configured)
+    const authResult = await verifyPubSubToken(request.headers.authorization);
+    if (!authResult.valid) {
+      console.warn('Pub/Sub auth failed:', authResult.error);
+      return reply.status(401).send({ error: 'Unauthorized' });
+    }
+
     try {
       await handleGmailWebhook(request.body);
       return reply.status(200).send({ ok: true });

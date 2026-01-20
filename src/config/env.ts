@@ -20,6 +20,7 @@ const envSchema = z.object({
   ENCRYPTION_KEY: z.string().length(64, 'Must be 64 hex characters (32 bytes)'),
 
   GMAIL_PUBSUB_TOPIC: z.string().optional(),
+  PUBSUB_SERVICE_ACCOUNT: z.string().email().optional(), // Service account email for Pub/Sub auth verification
 
   QUICKBOOKS_CLIENT_ID: z.string().min(1),
   QUICKBOOKS_CLIENT_SECRET: z.string().min(1),
